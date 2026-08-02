@@ -2285,7 +2285,7 @@ const Game={
     if(GS.wave>=10||GS.score>=15000)stars=4;if(GS.wave>=13||(GS.score>=40000&&GS.maxCombo>=15)||(victory&&GS.damageTaken===0))stars=5;
     if(GS.diff==='nightmare')stars=Math.min(5,stars+1);
     if(victory&&GS.mode==='career')stars=Math.max(stars,3);
-    if(extra&&extra.vs&&extra.result==='YOU WIN')stars=Math.min(5,stars+1);
+    if(extra&&extra.vs&&extra.result&&extra.result.indexOf('WIN')>=0)stars=Math.min(5,stars+1);
     GS.stars=stars;
 
     let mc=Math.round((25+GS.wave*14+GS.kills*.5+GS.bossesKilled*45+stars*35)*(hasPerk('scavenger')?1.15:1)*diffMul().mult);
