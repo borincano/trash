@@ -453,13 +453,16 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <div class="section-h"><h3>WORLD TOP</h3><button class="btn sm cyan" id="rankRefresh" type="button">REFRESH</button></div>
     <div class="chip" id="rankStatus" style="margin-bottom:10px">Loading…</div>
     <div id="globalList"></div>
-    <div class="section-h" style="margin-top:16px"><h3>ONLINE BACKEND (OPTIONAL)</h3></div>
+    <div class="section-h" style="margin-top:16px"><h3>GLOBAL BACKEND</h3></div>
     <p style="font-size:.85rem;color:var(--muted);margin-bottom:8px;line-height:1.45">
-      Paste a free Firebase / Worker scores URL for true global sync. Without it, ranks merge this device + any posted remote when configured.
+      Ranking is <b style="color:var(--c)">GLOBAL by default</b> — all players share the same world board. Optional: paste your own Firebase URL for a permanent private board.
     </p>
-    <input class="input" id="lbUrlInput" placeholder="https://YOUR.firebaseio.com/scores.json" style="margin-bottom:8px;letter-spacing:.04em;font-size:.75rem;text-align:left">
+    <input class="input" id="lbUrlInput" placeholder="Global cloud (default) or custom Firebase URL" style="margin-bottom:8px;letter-spacing:.04em;font-size:.75rem;text-align:left">
     <input class="input" id="lbKeyInput" placeholder="API key (optional)" style="margin-bottom:8px;letter-spacing:.04em;font-size:.75rem;text-align:left" type="password">
-    <button class="btn cyan" id="lbSaveCfg" type="button" style="width:100%">SAVE ONLINE CONFIG</button>
+    <div class="btn-row" style="gap:8px">
+      <button class="btn cyan" id="lbSaveCfg" type="button" style="flex:1">SAVE</button>
+      <button class="btn ghost" id="lbResetGlobal" type="button" style="flex:1">USE GLOBAL</button>
+    </div>
   </div>
 </div>
 
@@ -2246,19 +2249,23 @@ function renderSocial(){
 
 async function renderGlobalRank(){
   const st=$('rankStatus');const list=$('globalList');
-  st.textContent='Fetching world top…';
+  st.textContent='Fetching WORLD ranking…';
   list.innerHTML='';
   if(typeof Online!=='undefined'){
+    if(!Online.cfg.leaderboardUrl) Online.resetToGlobalDefault();
     $('lbUrlInput').value=Online.cfg.leaderboardUrl||'';
     $('lbKeyInput').value=Online.cfg.apiKey||'';
   }
   try{
     const top=await Online.fetchTop(30);
+    const err=Online.lastRemoteError;
     if(!top.length){
-      st.textContent='No scores yet — finish a run to post. Configure backend URL for true multi-device global.';
+      st.textContent=err?('Cloud offline — '+err):'World board empty — finish a run to post your score.';
       return;
     }
-    st.textContent=Online.cfg.leaderboardUrl?'Online + local merged':'Local device board (set backend URL for global)';
+    st.textContent=err
+      ?('⚠ Offline cache · '+top.length+' pilots (cloud: '+err+')')
+      :('🌍 GLOBAL · '+top.length+' pilots online');
     top.forEach((r,i)=>{
       const row=document.createElement('div');row.className='list-row';
       const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
@@ -2441,6 +2448,14 @@ function wireUI(){
   $('lbSaveCfg').onclick=()=>{
     Online.setConfig({leaderboardUrl:$('lbUrlInput').value.trim(),apiKey:$('lbKeyInput').value.trim()});
     Toast.show('ONLINE CONFIG SAVED','ok');
+    renderGlobalRank();
+  };
+  const resetBtn=$('lbResetGlobal');
+  if(resetBtn) resetBtn.onclick=()=>{
+    Online.resetToGlobalDefault();
+    $('lbUrlInput').value=Online.cfg.leaderboardUrl;
+    $('lbKeyInput').value='';
+    Toast.show('🌍 GLOBAL RANK ACTIVE','ok');
     renderGlobalRank();
   };
 

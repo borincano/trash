@@ -1,29 +1,35 @@
 /**
  * MUZZ GALAXY — Online layer
- * - Global leaderboard (free JSONBin-compatible / Firebase REST / local fallback)
- * - 1v1 VS via PeerJS (WebRTC over internet)
+ * - GLOBAL leaderboard (shared cloud store — works for all players)
+ * - 1v1 VS via PeerJS (WebRTC)
  */
 (function (global) {
   'use strict';
 
-  const STORAGE_LB = 'muzz_online_board_v1';
-  const STORAGE_CFG = 'muzz_online_cfg_v1';
+  const STORAGE_LB = 'muzz_online_board_v2';
+  const STORAGE_CFG = 'muzz_online_cfg_v2';
   const PEER_PREFIX = 'muzzgal-';
 
-  // Default free backend: public JSON via free "jsonblob" style OR custom endpoint.
-  // Users can set their own in Settings. Fallback merges local + optional remote.
+  // Shared global board (JSONBlob free cloud). All clients use the same ID.
+  // Optional: override with Firebase URL in Settings for permanent production.
+  const GLOBAL_BLOB_ID = '019fc495-2ae7-7692-b017-27f5a2ac92ef';
+  const GLOBAL_BLOB_URL = 'https://jsonblob.com/api/jsonBlob/' + GLOBAL_BLOB_ID;
+
   const DEFAULT_CFG = {
-    // Optional: full URL that accepts GET (array) and POST (score object)
-    // Example Firebase: https://YOUR.firebaseio.com/scores.json
-    // Example custom worker: https://muzz-scores.you.workers.dev/scores
-    leaderboardUrl: '',
-    // Optional API key header
+    leaderboardUrl: GLOBAL_BLOB_URL,
     apiKey: '',
+    backend: 'jsonblob', // jsonblob | firebase | custom
   };
 
   function loadCfg() {
     try {
-      return Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(STORAGE_CFG) || '{}'));
+      const c = Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(STORAGE_CFG) || '{}'));
+      // Always keep a shared cloud URL (global rank for every player)
+      if (!c.leaderboardUrl || c.leaderboardUrl === 'local' || c.leaderboardUrl === 'none') {
+        c.leaderboardUrl = GLOBAL_BLOB_URL;
+      }
+      if (!c.backend || c.backend === 'local') c.backend = 'jsonblob';
+      return c;
     } catch (e) {
       return Object.assign({}, DEFAULT_CFG);
     }
@@ -40,14 +46,93 @@
     }
   }
   function saveLocalBoard(arr) {
-    localStorage.setItem(STORAGE_LB, JSON.stringify(arr.slice(0, 100)));
+    localStorage.setItem(STORAGE_LB, JSON.stringify((arr || []).slice(0, 150)));
+  }
+
+  function normalizeEntry(e) {
+    if (!e || typeof e.score !== 'number') return null;
+    return {
+      name: String(e.name || 'PILOT').slice(0, 12).toUpperCase(),
+      score: e.score | 0,
+      wave: e.wave | 0,
+      waveScore: e.waveScore | 0,
+      mode: e.mode || 'endless',
+      ts: e.ts || Date.now(),
+      ver: e.ver || '1.2',
+    };
+  }
+
+  function mergeBoards(...lists) {
+    const map = new Map();
+    lists.flat().forEach((raw) => {
+      const e = normalizeEntry(raw);
+      if (!e) return;
+      // Unique per name+score+wave+ts (avoid dupes)
+      const key = e.name + '|' + e.score + '|' + e.wave + '|' + e.ts;
+      map.set(key, e);
+    });
+    // Keep best score per player name for cleaner global top
+    const bestByName = new Map();
+    [...map.values()].forEach((e) => {
+      const prev = bestByName.get(e.name);
+      if (!prev || e.score > prev.score || (e.score === prev.score && e.wave > prev.wave)) {
+        bestByName.set(e.name, e);
+      }
+    });
+    return [...bestByName.values()].sort((a, b) => b.score - a.score || b.wave - a.wave || b.ts - a.ts);
+  }
+
+  async function remoteGet(url, apiKey) {
+    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['X-Master-Key'] = apiKey;
+      headers.Authorization = 'Bearer ' + apiKey;
+    }
+    const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+    if (!res.ok) throw new Error('GET ' + res.status);
+    let data = await res.json();
+    // Firebase object map → array
+    if (data && !Array.isArray(data)) {
+      if (Array.isArray(data.record)) data = data.record;
+      else if (Array.isArray(data.scores)) data = data.scores;
+      else data = Object.keys(data).map((k) => Object.assign({ id: k }, data[k]));
+    }
+    return Array.isArray(data) ? data : [];
+  }
+
+  async function remotePutArray(url, apiKey, arr) {
+    // JSONBlob uses PUT to replace whole document
+    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['X-Master-Key'] = apiKey;
+      headers.Authorization = 'Bearer ' + apiKey;
+    }
+    const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(arr) });
+    if (!res.ok) throw new Error('PUT ' + res.status);
+    return true;
+  }
+
+  async function remotePostOne(url, apiKey, row) {
+    // Firebase-style push: POST appends as child
+    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['X-Master-Key'] = apiKey;
+      headers.Authorization = 'Bearer ' + apiKey;
+    }
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(row) });
+    if (!res.ok) throw new Error('POST ' + res.status);
+    return true;
+  }
+
+  function isFirebaseUrl(url) {
+    return /firebaseio\.com|firebasedatabase\.app/i.test(url || '');
   }
 
   const Online = {
     cfg: loadCfg(),
     peer: null,
     conn: null,
-    role: null, // 'host' | 'guest'
+    role: null,
     roomCode: null,
     ready: false,
     vsActive: false,
@@ -55,84 +140,79 @@
     meReady: false,
     onMsg: null,
     status: 'idle',
+    lastRemoteError: null,
 
-    /* ───────── LEADERBOARD ───────── */
-    async fetchTop(limit = 25) {
+    /* ───────── GLOBAL LEADERBOARD ───────── */
+    async fetchTop(limit) {
+      limit = limit || 50;
       const local = loadLocalBoard();
       let remote = [];
-      const url = this.cfg.leaderboardUrl;
-      if (url) {
-        try {
-          const headers = { Accept: 'application/json' };
-          if (this.cfg.apiKey) headers['X-Master-Key'] = this.cfg.apiKey;
-          if (this.cfg.apiKey) headers['Authorization'] = 'Bearer ' + this.cfg.apiKey;
-          const res = await fetch(url, { headers, cache: 'no-store' });
-          if (res.ok) {
-            let data = await res.json();
-            // Firebase returns object map
-            if (data && !Array.isArray(data)) {
-              remote = Object.keys(data).map((k) => Object.assign({ id: k }, data[k]));
-            } else if (Array.isArray(data)) {
-              remote = data;
-            } else if (data && Array.isArray(data.record)) {
-              remote = data.record;
-            } else if (data && Array.isArray(data.scores)) {
-              remote = data.scores;
-            }
-          }
-        } catch (e) {
-          console.warn('Leaderboard fetch failed', e);
-        }
+      const url = this.cfg.leaderboardUrl || GLOBAL_BLOB_URL;
+      try {
+        remote = await remoteGet(url, this.cfg.apiKey);
+        this.lastRemoteError = null;
+      } catch (e) {
+        this.lastRemoteError = String(e.message || e);
+        console.warn('Global rank GET failed', e);
       }
-      const map = new Map();
-      [...local, ...remote].forEach((e) => {
-        if (!e || typeof e.score !== 'number') return;
-        const key = (e.name || 'PILOT') + '|' + e.score + '|' + (e.wave || 0) + '|' + (e.ts || 0);
-        map.set(key, {
-          name: String(e.name || 'PILOT').slice(0, 12).toUpperCase(),
-          score: e.score | 0,
-          wave: e.wave | 0,
-          waveScore: e.waveScore | 0,
-          mode: e.mode || 'endless',
-          country: e.country || '',
-          ts: e.ts || Date.now(),
-        });
-      });
-      return [...map.values()].sort((a, b) => b.score - a.score || b.wave - a.wave).slice(0, limit);
+      const merged = mergeBoards(local, remote);
+      // cache remote merge locally for offline view
+      saveLocalBoard(merged);
+      return merged.slice(0, limit);
     },
 
     async submitScore(entry) {
-      const row = {
-        name: String(entry.name || 'PILOT').slice(0, 12).toUpperCase(),
-        score: entry.score | 0,
-        wave: entry.wave | 0,
-        waveScore: entry.waveScore | 0,
-        mode: entry.mode || 'endless',
+      const row = normalizeEntry({
+        name: entry.name,
+        score: entry.score,
+        wave: entry.wave,
+        waveScore: entry.waveScore,
+        mode: entry.mode,
         ts: Date.now(),
-        ver: '1.1',
-      };
+        ver: '1.2',
+      });
+      if (!row || row.score <= 0) return { ok: false, remote: false };
+
+      // Always keep local
       const local = loadLocalBoard();
       local.push(row);
-      saveLocalBoard(local.sort((a, b) => b.score - a.score).slice(0, 100));
+      saveLocalBoard(mergeBoards(local));
 
-      const url = this.cfg.leaderboardUrl;
-      if (!url) return { ok: true, remote: false, row };
+      const url = this.cfg.leaderboardUrl || GLOBAL_BLOB_URL;
       try {
-        const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
-        if (this.cfg.apiKey) {
-          headers['X-Master-Key'] = this.cfg.apiKey;
-          headers['Authorization'] = 'Bearer ' + this.cfg.apiKey;
+        if (isFirebaseUrl(url)) {
+          // Atomic-ish append
+          await remotePostOne(url, this.cfg.apiKey, row);
+          this.lastRemoteError = null;
+          return { ok: true, remote: true, row, backend: 'firebase' };
         }
-        // Firebase push: POST to collection.json
-        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(row) });
-        return { ok: res.ok, remote: true, status: res.status, row };
+        // JSONBlob / array document: get-merge-put (global shared board)
+        let remote = [];
+        try {
+          remote = await remoteGet(url, this.cfg.apiKey);
+        } catch (e) {
+          remote = [];
+        }
+        const merged = mergeBoards(remote, local, [row]).slice(0, 100);
+        await remotePutArray(url, this.cfg.apiKey, merged);
+        saveLocalBoard(merged);
+        this.lastRemoteError = null;
+        return { ok: true, remote: true, row, backend: 'global', count: merged.length };
       } catch (e) {
-        return { ok: false, remote: true, error: String(e), row };
+        this.lastRemoteError = String(e.message || e);
+        console.warn('Global rank POST failed', e);
+        return { ok: false, remote: true, error: this.lastRemoteError, row };
       }
     },
 
     setConfig(partial) {
       this.cfg = Object.assign({}, this.cfg, partial);
+      if (!this.cfg.leaderboardUrl) this.cfg.leaderboardUrl = GLOBAL_BLOB_URL;
+      saveCfg(this.cfg);
+    },
+
+    resetToGlobalDefault() {
+      this.cfg = Object.assign({}, DEFAULT_CFG);
       saveCfg(this.cfg);
     },
 
@@ -215,7 +295,7 @@
         });
         this.peer.on('error', reject);
         setTimeout(() => {
-          if (this.status === 'joining') reject(new Error('Room timeout'));
+          if (this.status === 'joining') reject(new Error('Room timeout — check code / internet'));
         }, 15000);
       });
     },
@@ -237,9 +317,7 @@
         if (typeof Toast !== 'undefined') Toast.show('OPPONENT DISCONNECTED', 'pink');
         if (this.onDisconnect) this.onDisconnect();
       });
-      if (this.role === 'host') {
-        this.send({ t: 'hello', name: this.myName() });
-      }
+      if (this.role === 'host') this.send({ t: 'hello', name: this.myName() });
       if (this.onConnect) this.onConnect();
     },
 
@@ -260,8 +338,9 @@
           if (this.onLobby) this.onLobby();
           if (this.role === 'host' && this.meReady && this.opp.ready) {
             const seed = (Math.random() * 1e9) | 0;
-            this.send({ t: 'start', seed, diff: msg.diff || 'hard' });
-            if (this.onStart) this.onStart({ seed, diff: msg.diff || 'hard' });
+            const diff = msg.diff || 'hard';
+            this.send({ t: 'start', seed, diff });
+            if (this.onStart) this.onStart({ seed, diff });
           }
           break;
         case 'start':
@@ -297,7 +376,6 @@
     setReady(diff) {
       this.meReady = true;
       this.send({ t: 'ready', diff: diff || 'hard', name: this.myName() });
-      // host starts when both ready
       if (this.role === 'host' && this.opp.ready) {
         const seed = (Math.random() * 1e9) | 0;
         this.send({ t: 'start', seed, diff: diff || 'hard' });
@@ -317,12 +395,7 @@
     },
 
     sendEnd(state) {
-      this.send({
-        t: 'end',
-        score: state.score | 0,
-        waveScore: state.waveScore | 0,
-        name: this.myName(),
-      });
+      this.send({ t: 'end', score: state.score | 0, waveScore: state.waveScore | 0, name: this.myName() });
     },
 
     destroyPeer() {
@@ -336,8 +409,10 @@
       this.peer = null;
       this.vsActive = false;
       this.status = 'idle';
+      this.meReady = false;
     },
   };
 
   global.Online = Online;
+  global.MUZZ_GLOBAL_LB = GLOBAL_BLOB_URL;
 })(typeof window !== 'undefined' ? window : globalThis);
