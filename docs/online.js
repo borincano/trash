@@ -11,14 +11,22 @@
   const STORAGE_CFG = 'muzz_online_cfg_v3';
   const PEER_PREFIX = 'muzzgal-';
 
-  // Permanent global board — same Firebase project as muzzsnap, isolated collection.
+  // Permanent global board — same Firebase project as muzzsnap, isolated collections.
   const FIRESTORE_PROJECT = 'galaxymuzz';
   const FIRESTORE_COLLECTION = 'muzzgalaxy_scores';
+  const FIRESTORE_ROOMS = 'muzzgalaxy_rooms';
+  const MAX_GLOBAL_ROOMS = 10;
+  const ROOM_TTL_MS = 8 * 60 * 1000; // stale rooms auto-drop from list
   const GLOBAL_FIRESTORE_URL =
     'https://firestore.googleapis.com/v1/projects/' +
     FIRESTORE_PROJECT +
     '/databases/(default)/documents/' +
     FIRESTORE_COLLECTION;
+  const ROOMS_URL =
+    'https://firestore.googleapis.com/v1/projects/' +
+    FIRESTORE_PROJECT +
+    '/databases/(default)/documents/' +
+    FIRESTORE_ROOMS;
 
   // Legacy fallback (only if Firestore unreachable and user overrides)
   const GLOBAL_BLOB_ID = '019fc495-2ae7-7692-b017-27f5a2ac92ef';
@@ -212,6 +220,84 @@
     return true;
   }
 
+  function roomFromDoc(doc) {
+    if (!doc || !doc.fields) return null;
+    const f = doc.fields;
+    const id = (doc.name || '').split('/').pop();
+    return {
+      id: id,
+      code: String(fieldVal(f.code) || id || '').toUpperCase(),
+      host: String(fieldVal(f.host) || 'HOST').slice(0, 12),
+      diff: String(fieldVal(f.diff) || 'hard'),
+      status: String(fieldVal(f.status) || 'open'),
+      players: Number(fieldVal(f.players) || 1) | 0,
+      ts: Number(fieldVal(f.ts) || 0),
+    };
+  }
+
+  function roomToBody(room) {
+    return {
+      fields: {
+        code: { stringValue: String(room.code || '').toUpperCase() },
+        host: { stringValue: String(room.host || 'HOST').slice(0, 12) },
+        diff: { stringValue: String(room.diff || 'hard') },
+        status: { stringValue: String(room.status || 'open') },
+        players: { integerValue: String(room.players | 0) },
+        ts: { integerValue: String(room.ts | 0) },
+      },
+    };
+  }
+
+  async function firestoreListRaw(url) {
+    const listUrl = withKey(url.replace(/\?.*$/, '') + '?pageSize=50', '');
+    const res = await fetch(listUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (res.status === 404) return [];
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error('Rooms GET ' + res.status + (t ? ': ' + t.slice(0, 100) : ''));
+    }
+    const data = await res.json();
+    return data.documents || [];
+  }
+
+  async function firestoreUpsertRoom(room) {
+    const code = String(room.code || '').toUpperCase();
+    const url = withKey(ROOMS_URL + '/' + encodeURIComponent(code), '');
+    // PATCH with updateMask creates if missing on some APIs; use PATCH then POST fallback
+    let res = await fetch(url + '?updateMask.fieldPaths=code&updateMask.fieldPaths=host&updateMask.fieldPaths=diff&updateMask.fieldPaths=status&updateMask.fieldPaths=players&updateMask.fieldPaths=ts', {
+      method: 'PATCH',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(roomToBody(room)),
+    });
+    if (res.status === 404) {
+      res = await fetch(withKey(ROOMS_URL + '?documentId=' + encodeURIComponent(code), ''), {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(roomToBody(room)),
+      });
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error('Room save ' + res.status + (t ? ': ' + t.slice(0, 100) : ''));
+    }
+    return true;
+  }
+
+  async function firestoreDeleteRoom(code) {
+    const url = withKey(ROOMS_URL + '/' + encodeURIComponent(String(code).toUpperCase()), '');
+    const res = await fetch(url, { method: 'DELETE', headers: { Accept: 'application/json' } });
+    if (res.status === 404) return true;
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error('Room delete ' + res.status + (t ? ': ' + t.slice(0, 80) : ''));
+    }
+    return true;
+  }
+
   async function remoteGet(url, apiKey) {
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
     if (apiKey) {
@@ -273,6 +359,9 @@
     inputSeq: 0,
     _inputAcc: 0,
     _worldAcc: 0,
+    publishedRoom: null,
+    lastRoomsError: null,
+    MAX_ROOMS: MAX_GLOBAL_ROOMS,
 
     /* ───────── GLOBAL LEADERBOARD (Firestore galaxymuzz) ───────── */
     async fetchTop(limit) {
@@ -366,6 +455,85 @@
     resetToGlobalDefault() {
       this.cfg = Object.assign({}, DEFAULT_CFG);
       saveCfg(this.cfg);
+    },
+
+    /* ───────── GLOBAL ROOM BROWSER (max 10) ───────── */
+    async listRooms() {
+      const now = Date.now();
+      let docs = [];
+      try {
+        docs = await firestoreListRaw(ROOMS_URL);
+        this.lastRoomsError = null;
+      } catch (e) {
+        this.lastRoomsError = String(e.message || e);
+        return [];
+      }
+      const rooms = docs.map(roomFromDoc).filter(Boolean);
+      const live = [];
+      for (const r of rooms) {
+        const age = now - (r.ts || 0);
+        if (age > ROOM_TTL_MS || r.status === 'playing') {
+          // purge stale / finished in background
+          firestoreDeleteRoom(r.code).catch(() => {});
+          continue;
+        }
+        if (r.status === 'open' || r.status === 'full') live.push(r);
+      }
+      live.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      return live.slice(0, MAX_GLOBAL_ROOMS);
+    },
+
+    async publishRoom(meta) {
+      const open = await this.listRooms();
+      // Don't count our own room if re-publish
+      const others = open.filter((r) => r.code !== String(meta.code || '').toUpperCase());
+      if (others.length >= MAX_GLOBAL_ROOMS) {
+        throw new Error('GLOBAL FULL · max ' + MAX_GLOBAL_ROOMS + ' rooms');
+      }
+      const room = {
+        code: String(meta.code || '').toUpperCase(),
+        host: String(meta.host || this.myName()).slice(0, 12),
+        diff: meta.diff || 'hard',
+        status: meta.status || 'open',
+        players: meta.players | 0 || 1,
+        ts: Date.now(),
+      };
+      await firestoreUpsertRoom(room);
+      this.publishedRoom = room;
+      return room;
+    },
+
+    async setRoomStatus(code, status, players) {
+      const c = String(code || this.roomCode || '').toUpperCase();
+      if (!c) return;
+      const room = {
+        code: c,
+        host: (this.publishedRoom && this.publishedRoom.host) || this.myName(),
+        diff: (this.publishedRoom && this.publishedRoom.diff) || this._pendingDiff || 'hard',
+        status: status || 'open',
+        players: players != null ? players : status === 'full' || status === 'playing' ? 2 : 1,
+        ts: (this.publishedRoom && this.publishedRoom.ts) || Date.now(),
+      };
+      try {
+        if (status === 'playing') {
+          await firestoreDeleteRoom(c); // free slot when match starts
+          this.publishedRoom = null;
+        } else {
+          await firestoreUpsertRoom(room);
+          this.publishedRoom = room;
+        }
+      } catch (e) {
+        console.warn('setRoomStatus', e);
+      }
+    },
+
+    async unpublishRoom(code) {
+      const c = String(code || this.roomCode || (this.publishedRoom && this.publishedRoom.code) || '').toUpperCase();
+      if (!c) return;
+      try {
+        await firestoreDeleteRoom(c);
+      } catch (e) {}
+      if (this.publishedRoom && this.publishedRoom.code === c) this.publishedRoom = null;
     },
 
     /* ───────── PEER VS ───────── */
@@ -512,6 +680,7 @@
       this.vsActive = true;
       const seed = (Math.random() * 1e9) | 0;
       const d = diff || this._pendingDiff || 'hard';
+      this.setRoomStatus(this.roomCode, 'playing', 2); // frees global slot
       this.send({ t: 'start', seed, diff: d, mode: 'survival' });
       if (this.onStart) this.onStart({ seed, diff: d, mode: 'survival' });
       return true;
@@ -525,8 +694,9 @@
           this._helloOk = true;
           this.send({ t: 'hello_ack', name: this.myName() });
           if (this.onLobby) this.onLobby();
-          // Host: auto-start shortly after opponent connects
+          // Host: mark room full, then auto-start
           if (this.role === 'host') {
+            this.setRoomStatus(this.roomCode, 'full', 2);
             setTimeout(() => {
               if (!this._matchStarted) this.beginMatch(this._pendingDiff);
             }, 700);
@@ -676,6 +846,10 @@
     },
 
     destroyPeer() {
+      const code = this.roomCode || (this.publishedRoom && this.publishedRoom.code);
+      if (code && this.role === 'host' && !this._matchStarted) {
+        this.unpublishRoom(code);
+      }
       try {
         if (this.conn) this.conn.close();
       } catch (e) {}

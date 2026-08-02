@@ -1,0 +1,48 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // MUZZ GALAXY — global ranking only
+    // Collection: muzzgalaxy_scores
+    // Does NOT open social / private / chat
+    // ============================================================
+    match /muzzgalaxy_scores/{docId} {
+      allow read: if true;
+      allow create: if
+        request.resource.data.keys().hasAll(['name', 'score', 'wave', 'ts']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 12 &&
+        request.resource.data.score is int &&
+        request.resource.data.score >= 0 &&
+        request.resource.data.score < 100000000 &&
+        request.resource.data.wave is int &&
+        request.resource.data.ts is int;
+      allow update, delete: if false;
+    }
+
+    // VS room browser (max 10 enforced in client; open list only)
+    match /muzzgalaxy_rooms/{roomId} {
+      allow read: if true;
+      allow create, update: if
+        request.resource.data.keys().hasAll(['code', 'host', 'diff', 'status', 'players', 'ts']) &&
+        request.resource.data.code is string &&
+        request.resource.data.code.size() >= 4 &&
+        request.resource.data.code.size() <= 6 &&
+        request.resource.data.host is string &&
+        request.resource.data.host.size() <= 12 &&
+        request.resource.data.players is int &&
+        request.resource.data.players >= 1 &&
+        request.resource.data.players <= 2 &&
+        request.resource.data.status in ['open', 'full', 'playing'];
+      allow delete: if true;
+    }
+
+    // Default deny — social / private / chat untouched
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
