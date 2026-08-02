@@ -1,0 +1,43 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MUZZ GALAXY">
+<meta name="theme-color" content="#04040c">
+<title>MUZZ GALAXY</title>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png">
+<style>
+body{margin:0;min-height:100vh;background:#04040c;color:#e8f7ff;font-family:system-ui,sans-serif;
+display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;
+background-image:radial-gradient(ellipse at 50% 15%,#0a1a3a,transparent 50%)}
+img{width:100px;height:100px;border-radius:24px;box-shadow:0 0 36px rgba(0,232,255,.45)}
+h1{letter-spacing:.14em;color:#00e8ff;margin:1rem 0 .3rem;font-size:1.5rem}
+p{color:rgba(200,230,255,.65);max-width:380px;line-height:1.55}
+.btns{display:flex;flex-direction:column;gap:12px;width:min(320px,92vw);margin-top:1.2rem}
+a{display:block;padding:14px;text-decoration:none;font-weight:800;letter-spacing:.1em;border-radius:8px}
+.play{background:linear-gradient(135deg,#00e8ff,#0090cc);color:#041018}
+.ios{background:rgba(0,232,255,.08);border:1px solid rgba(0,232,255,.4);color:#00e8ff}
+.apk{background:rgba(255,45,155,.12);border:1px solid rgba(255,45,155,.45);color:#ff2d9b}
+.note{font-size:.78rem;color:rgba(200,230,255,.4);margin-top:1.4rem}
+code{color:#ffd000}
+</style>
+</head>
+<body>
+<img src="icons/icon-192.png" alt="MUZZ GALAXY">
+<h1>MUZZ GALAXY</h1>
+<p>Asalto cyberpunk · clave <code>2025</code></p>
+<div class="btns">
+  <a class="play" href="play.html">▶ JUGAR AHORA</a>
+  <a class="ios" href="ios-install.html">iPhone · Cómo instalar</a>
+  <a class="apk" href="https://github.com/borincano/trash/raw/main/download/MUZZ-GALAXY-debug.apk">Android · APK</a>
+</div>
+<p class="note">iPhone (Safari): Compartir → Añadir a pantalla de inicio</p>
+<script>
+if("serviceWorker" in navigator){navigator.serviceWorker.register("./sw.js").catch(function(){})}
+</script>
+</body>
+</html>
