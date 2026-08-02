@@ -1,6 +1,17 @@
 # MUZZ GALAXY — App package
 
-Premium mobile shooter (HTML + Android).
+Premium mobile shooter (HTML + Android + iOS path).
+
+## iPhone / iOS
+
+**Sí es posible.** Ver guía completa: [IOS.md](./IOS.md)
+
+| Ruta | Notas |
+|------|--------|
+| **PWA (Safari)** | Funciona ya — Añadir a pantalla de inicio |
+| **App nativa (.ipa)** | Requiere **Mac + Xcode** + Apple Developer |
+
+Instrucciones rápidas iPhone: `www/ios-install.html`
 
 ## Descargar APK (GitHub)
 
@@ -81,3 +92,20 @@ Build → Build Bundle(s) / APK(s) → Build APK(s)
 
 ## Package ID
 `com.muzzinteractive.galaxy`
+
+## Jugar en iPhone / Web (GitHub Pages)
+
+**URL del juego:** https://borincano.github.io/trash/
+
+- Jugar: https://borincano.github.io/trash/play.html
+- Instalar iPhone: https://borincano.github.io/trash/ios-install.html
+- APK Android: [download/MUZZ-GALAXY-debug.apk](./download/MUZZ-GALAXY-debug.apk)
+
+### Activar GitHub Pages (solo una vez)
+Si el link no abre:
+1. Repo **Settings** ? **Pages**
+2. Source: **Deploy from a branch**
+3. Branch: **gh-pages** / folder **/** (root)
+4. Save
+
+Clave del juego: `2025`
