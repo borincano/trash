@@ -1,52 +1,78 @@
 # MUZZ GALAXY — Online features
 
-## 1) Global Rank — ON by default (all players)
+## 1) Global Rank — Firebase Firestore (permanent)
 
-Every client shares the **same cloud board**. No setup required.
+**Project:** `galaxymuzz` (same as muzzsnap)  
+**Collection ONLY:** `muzzgalaxy_scores`  
 
-- After each run, your best score is posted to the world leaderboard.
-- Open **GLOBAL RANK** → see pilots from every device / country.
-- Local cache still works offline; cloud re-syncs when online.
+Does **not** read/write:
+- `social`
+- `private`
+- chat / other muzzsnap data
 
-Default store: public JSONBlob document shared by the game build.  
-Optional: paste your own **Firebase Realtime Database** URL for a permanent private board.
+Default REST endpoint (hardcoded in game):
 
-### Optional permanent Firebase (recommended long-term)
-1. https://console.firebase.google.com → create project  
-2. Build → Realtime Database → create  
-3. Rules:
+```
+https://firestore.googleapis.com/v1/projects/galaxymuzz/databases/(default)/documents/muzzgalaxy_scores
+```
 
-```json
-{
-  "rules": {
-    "scores": {
-      ".read": true,
-      ".write": true
+### Security rules (add ONLY this block)
+
+In Firebase Console → Firestore → **Rules**, keep your existing rules for social/private/chat and **add**:
+
+```
+match /muzzgalaxy_scores/{docId} {
+  allow read: if true;
+  allow create: if
+    request.resource.data.keys().hasAll(['name','score','wave','ts']) &&
+    request.resource.data.name is string &&
+    request.resource.data.name.size() <= 12 &&
+    request.resource.data.score is int &&
+    request.resource.data.score >= 0 &&
+    request.resource.data.score < 100000000;
+  allow update, delete: if false;
+}
+```
+
+Full example if you only had default deny:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // --- muzzsnap (KEEP YOUR REAL RULES) ---
+    match /social/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    match /private/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // --- MUZZ GALAXY rank only ---
+    match /muzzgalaxy_scores/{docId} {
+      allow read: if true;
+      allow create: if
+        request.resource.data.keys().hasAll(['name','score','wave','ts']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() <= 12 &&
+        request.resource.data.score is int &&
+        request.resource.data.score >= 0 &&
+        request.resource.data.score < 100000000;
+      allow update, delete: if false;
     }
   }
 }
 ```
 
-4. Copy URL, e.g.  
-   `https://YOUR-PROJECT-default-rtdb.firebaseio.com/scores.json`
-5. In game: **GLOBAL RANK → paste URL → SAVE**  
-   Or press **USE GLOBAL** to return to the shared world board.
+**Important:** Do not replace your whole rules file if social/private already have custom rules — only **append** the `muzzgalaxy_scores` block.
 
-## 2) VS 1v1 (internet) — ready out of the box
+After Publish, scores appear under Data → collection `muzzgalaxy_scores`.
 
-Uses **PeerJS / WebRTC** (public cloud). No server setup.
+Works on **Spark (free)** plan.
 
-1. Both players open the **same game URL** (web HTTPS recommended).
-2. Player A: **VS 1v1 → HOST ROOM** → share the 5-letter code.
-3. Player B: enter code → **JOIN ROOM**.
-4. Both press **READY**.
-5. Same 60s assault seed — highest **wave objective score** wins.
+## 2) VS 1v1 (internet)
 
-**Note:** Both devices need internet. Some corporate networks block WebRTC.
+PeerJS / WebRTC — no Firebase needed.
 
-## Play online
-- PWA / browser: https://borincano.github.io/trash/docs/play.html  
-- Promo site: https://borincano.github.io/trash/docs/promo/
-
-## Access key
-`2025`
+## Play
+- https://borincano.github.io/trash/docs/play.html  
+- Access key: `2025`

@@ -1,34 +1,57 @@
 /**
  * MUZZ GALAXY — Online layer
- * - GLOBAL leaderboard (shared cloud store — works for all players)
+ * - GLOBAL leaderboard via Firebase Firestore (project galaxymuzz)
+ *   Collection ONLY: muzzgalaxy_scores  (never touches social / private / chat)
  * - 1v1 VS via PeerJS (WebRTC)
  */
 (function (global) {
   'use strict';
 
-  const STORAGE_LB = 'muzz_online_board_v2';
-  const STORAGE_CFG = 'muzz_online_cfg_v2';
+  const STORAGE_LB = 'muzz_online_board_v3';
+  const STORAGE_CFG = 'muzz_online_cfg_v3';
   const PEER_PREFIX = 'muzzgal-';
 
-  // Shared global board (JSONBlob free cloud). All clients use the same ID.
-  // Optional: override with Firebase URL in Settings for permanent production.
+  // Permanent global board — same Firebase project as muzzsnap, isolated collection.
+  const FIRESTORE_PROJECT = 'galaxymuzz';
+  const FIRESTORE_COLLECTION = 'muzzgalaxy_scores';
+  const GLOBAL_FIRESTORE_URL =
+    'https://firestore.googleapis.com/v1/projects/' +
+    FIRESTORE_PROJECT +
+    '/databases/(default)/documents/' +
+    FIRESTORE_COLLECTION;
+
+  // Legacy fallback (only if Firestore unreachable and user overrides)
   const GLOBAL_BLOB_ID = '019fc495-2ae7-7692-b017-27f5a2ac92ef';
   const GLOBAL_BLOB_URL = 'https://jsonblob.com/api/jsonBlob/' + GLOBAL_BLOB_ID;
 
   const DEFAULT_CFG = {
-    leaderboardUrl: GLOBAL_BLOB_URL,
+    leaderboardUrl: GLOBAL_FIRESTORE_URL,
     apiKey: '',
-    backend: 'jsonblob', // jsonblob | firebase | custom
+    backend: 'firestore', // firestore | rtdb | jsonblob | custom
   };
+
+  function detectBackend(url) {
+    if (!url) return 'firestore';
+    if (/firestore\.googleapis\.com/i.test(url)) return 'firestore';
+    if (/firebaseio\.com|firebasedatabase\.app/i.test(url)) return 'rtdb';
+    if (/jsonblob\.com/i.test(url)) return 'jsonblob';
+    return 'custom';
+  }
 
   function loadCfg() {
     try {
       const c = Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(STORAGE_CFG) || '{}'));
-      // Always keep a shared cloud URL (global rank for every player)
-      if (!c.leaderboardUrl || c.leaderboardUrl === 'local' || c.leaderboardUrl === 'none') {
-        c.leaderboardUrl = GLOBAL_BLOB_URL;
+      // Migrate old jsonblob / empty → permanent Firestore global
+      if (
+        !c.leaderboardUrl ||
+        c.leaderboardUrl === 'local' ||
+        c.leaderboardUrl === 'none' ||
+        /jsonblob\.com/i.test(c.leaderboardUrl)
+      ) {
+        c.leaderboardUrl = GLOBAL_FIRESTORE_URL;
+        c.backend = 'firestore';
       }
-      if (!c.backend || c.backend === 'local') c.backend = 'jsonblob';
+      c.backend = detectBackend(c.leaderboardUrl);
       return c;
     } catch (e) {
       return Object.assign({}, DEFAULT_CFG);
@@ -50,7 +73,7 @@
   }
 
   function normalizeEntry(e) {
-    if (!e || typeof e.score !== 'number') return null;
+    if (!e || typeof e.score !== 'number' || isNaN(e.score)) return null;
     return {
       name: String(e.name || 'PILOT').slice(0, 12).toUpperCase(),
       score: e.score | 0,
@@ -67,11 +90,9 @@
     lists.flat().forEach((raw) => {
       const e = normalizeEntry(raw);
       if (!e) return;
-      // Unique per name+score+wave+ts (avoid dupes)
       const key = e.name + '|' + e.score + '|' + e.wave + '|' + e.ts;
       map.set(key, e);
     });
-    // Keep best score per player name for cleaner global top
     const bestByName = new Map();
     [...map.values()].forEach((e) => {
       const prev = bestByName.get(e.name);
@@ -80,6 +101,82 @@
       }
     });
     return [...bestByName.values()].sort((a, b) => b.score - a.score || b.wave - a.wave || b.ts - a.ts);
+  }
+
+  function fieldVal(f) {
+    if (!f) return undefined;
+    if (f.stringValue !== undefined) return f.stringValue;
+    if (f.integerValue !== undefined) return parseInt(f.integerValue, 10);
+    if (f.doubleValue !== undefined) return Number(f.doubleValue);
+    if (f.booleanValue !== undefined) return !!f.booleanValue;
+    return undefined;
+  }
+
+  function fromFirestoreDoc(doc) {
+    if (!doc || !doc.fields) return null;
+    const f = doc.fields;
+    return normalizeEntry({
+      name: fieldVal(f.name),
+      score: Number(fieldVal(f.score)),
+      wave: Number(fieldVal(f.wave) || 0),
+      waveScore: Number(fieldVal(f.waveScore) || 0),
+      mode: fieldVal(f.mode) || 'endless',
+      ts: Number(fieldVal(f.ts) || Date.now()),
+      ver: fieldVal(f.ver) || '1.2',
+    });
+  }
+
+  function toFirestoreBody(row) {
+    return {
+      fields: {
+        name: { stringValue: row.name },
+        score: { integerValue: String(row.score | 0) },
+        wave: { integerValue: String(row.wave | 0) },
+        waveScore: { integerValue: String(row.waveScore | 0) },
+        mode: { stringValue: String(row.mode || 'endless') },
+        ts: { integerValue: String(row.ts | 0) },
+        ver: { stringValue: String(row.ver || '1.2') },
+      },
+    };
+  }
+
+  function withKey(url, apiKey) {
+    if (!apiKey) return url;
+    return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(apiKey);
+  }
+
+  async function firestoreList(url, apiKey) {
+    // pageSize max 300 for REST; we keep 100
+    let base = url.replace(/\?.*$/, '');
+    const listUrl = withKey(base + '?pageSize=100', apiKey);
+    const res = await fetch(listUrl, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (res.status === 404) return []; // empty collection
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error('Firestore GET ' + res.status + (t ? ': ' + t.slice(0, 120) : ''));
+    }
+    const data = await res.json();
+    const docs = data.documents || [];
+    return docs.map(fromFirestoreDoc).filter(Boolean);
+  }
+
+  async function firestoreCreate(url, apiKey, row) {
+    let base = url.replace(/\?.*$/, '');
+    const postUrl = withKey(base, apiKey);
+    const res = await fetch(postUrl, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(toFirestoreBody(row)),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error('Firestore POST ' + res.status + (t ? ': ' + t.slice(0, 120) : ''));
+    }
+    return true;
   }
 
   async function remoteGet(url, apiKey) {
@@ -91,17 +188,16 @@
     const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
     if (!res.ok) throw new Error('GET ' + res.status);
     let data = await res.json();
-    // Firebase object map → array
     if (data && !Array.isArray(data)) {
       if (Array.isArray(data.record)) data = data.record;
       else if (Array.isArray(data.scores)) data = data.scores;
+      else if (data.documents) return (data.documents || []).map(fromFirestoreDoc).filter(Boolean);
       else data = Object.keys(data).map((k) => Object.assign({ id: k }, data[k]));
     }
     return Array.isArray(data) ? data : [];
   }
 
   async function remotePutArray(url, apiKey, arr) {
-    // JSONBlob uses PUT to replace whole document
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
     if (apiKey) {
       headers['X-Master-Key'] = apiKey;
@@ -113,7 +209,6 @@
   }
 
   async function remotePostOne(url, apiKey, row) {
-    // Firebase-style push: POST appends as child
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
     if (apiKey) {
       headers['X-Master-Key'] = apiKey;
@@ -122,10 +217,6 @@
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(row) });
     if (!res.ok) throw new Error('POST ' + res.status);
     return true;
-  }
-
-  function isFirebaseUrl(url) {
-    return /firebaseio\.com|firebasedatabase\.app/i.test(url || '');
   }
 
   const Online = {
@@ -142,21 +233,22 @@
     status: 'idle',
     lastRemoteError: null,
 
-    /* ───────── GLOBAL LEADERBOARD ───────── */
+    /* ───────── GLOBAL LEADERBOARD (Firestore galaxymuzz) ───────── */
     async fetchTop(limit) {
       limit = limit || 50;
       const local = loadLocalBoard();
       let remote = [];
-      const url = this.cfg.leaderboardUrl || GLOBAL_BLOB_URL;
+      const url = this.cfg.leaderboardUrl || GLOBAL_FIRESTORE_URL;
+      const backend = detectBackend(url);
       try {
-        remote = await remoteGet(url, this.cfg.apiKey);
+        if (backend === 'firestore') remote = await firestoreList(url, this.cfg.apiKey);
+        else remote = await remoteGet(url, this.cfg.apiKey);
         this.lastRemoteError = null;
       } catch (e) {
         this.lastRemoteError = String(e.message || e);
         console.warn('Global rank GET failed', e);
       }
       const merged = mergeBoards(local, remote);
-      // cache remote merge locally for offline view
       saveLocalBoard(merged);
       return merged.slice(0, limit);
     },
@@ -173,20 +265,24 @@
       });
       if (!row || row.score <= 0) return { ok: false, remote: false };
 
-      // Always keep local
       const local = loadLocalBoard();
       local.push(row);
       saveLocalBoard(mergeBoards(local));
 
-      const url = this.cfg.leaderboardUrl || GLOBAL_BLOB_URL;
+      const url = this.cfg.leaderboardUrl || GLOBAL_FIRESTORE_URL;
+      const backend = detectBackend(url);
       try {
-        if (isFirebaseUrl(url)) {
-          // Atomic-ish append
+        if (backend === 'firestore') {
+          await firestoreCreate(url, this.cfg.apiKey, row);
+          this.lastRemoteError = null;
+          return { ok: true, remote: true, row, backend: 'firestore' };
+        }
+        if (backend === 'rtdb') {
           await remotePostOne(url, this.cfg.apiKey, row);
           this.lastRemoteError = null;
-          return { ok: true, remote: true, row, backend: 'firebase' };
+          return { ok: true, remote: true, row, backend: 'rtdb' };
         }
-        // JSONBlob / array document: get-merge-put (global shared board)
+        // jsonblob / custom array document
         let remote = [];
         try {
           remote = await remoteGet(url, this.cfg.apiKey);
@@ -197,7 +293,7 @@
         await remotePutArray(url, this.cfg.apiKey, merged);
         saveLocalBoard(merged);
         this.lastRemoteError = null;
-        return { ok: true, remote: true, row, backend: 'global', count: merged.length };
+        return { ok: true, remote: true, row, backend: backend, count: merged.length };
       } catch (e) {
         this.lastRemoteError = String(e.message || e);
         console.warn('Global rank POST failed', e);
@@ -207,7 +303,8 @@
 
     setConfig(partial) {
       this.cfg = Object.assign({}, this.cfg, partial);
-      if (!this.cfg.leaderboardUrl) this.cfg.leaderboardUrl = GLOBAL_BLOB_URL;
+      if (!this.cfg.leaderboardUrl) this.cfg.leaderboardUrl = GLOBAL_FIRESTORE_URL;
+      this.cfg.backend = detectBackend(this.cfg.leaderboardUrl);
       saveCfg(this.cfg);
     },
 
@@ -414,5 +511,10 @@
   };
 
   global.Online = Online;
-  global.MUZZ_GLOBAL_LB = GLOBAL_BLOB_URL;
+  global.MUZZ_GLOBAL_LB = GLOBAL_FIRESTORE_URL;
+  global.MUZZ_FIRESTORE = {
+    project: FIRESTORE_PROJECT,
+    collection: FIRESTORE_COLLECTION,
+    url: GLOBAL_FIRESTORE_URL,
+  };
 })(typeof window !== 'undefined' ? window : globalThis);
