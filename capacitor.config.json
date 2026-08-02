@@ -1,0 +1,19 @@
+{
+  "appId": "com.muzzinteractive.galaxy",
+  "appName": "MUZZ GALAXY",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#04040c"
+  },
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#04040c",
+      "showSpinner": false
+    }
+  }
+}

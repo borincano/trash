@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="muzz_launcher_bg">#04040C</color>
+    <color name="colorPrimary">#00E8FF</color>
+    <color name="colorPrimaryDark">#04040C</color>
+    <color name="colorAccent">#FF2D9B</color>
+</resources>

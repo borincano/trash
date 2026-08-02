@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MUZZ GALAXY</string>
+    <string name="title_activity_main">MUZZ GALAXY</string>
+    <string name="package_name">com.muzzinteractive.galaxy</string>
+    <string name="custom_url_scheme">com.muzzinteractive.galaxy</string>
+</resources>

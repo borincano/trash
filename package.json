@@ -1,0 +1,23 @@
+{
+  "name": "muzz-galaxy-app",
+  "version": "1.0.0",
+  "description": "MUZZ GALAXY — commercial mobile shooter (HTML + Android APK)",
+  "author": "MUZZ Interactive",
+  "license": "UNLICENSED",
+  "scripts": {
+    "icons": "node scripts/generate-icons.mjs",
+    "desktop": "npx --yes serve www -p 5173",
+    "sync": "npx cap sync android",
+    "open:android": "npx cap open android",
+    "build:android": "npx cap sync android && node scripts/apply-android-icons.mjs",
+    "apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "sharp": "^0.34.3"
+  }
+}
