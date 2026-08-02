@@ -74,15 +74,33 @@
 
   function normalizeEntry(e) {
     if (!e || typeof e.score !== 'number' || isNaN(e.score)) return null;
+    const mode = String(e.mode || 'endless').toLowerCase();
     return {
       name: String(e.name || 'PILOT').slice(0, 12).toUpperCase(),
       score: e.score | 0,
       wave: e.wave | 0,
       waveScore: e.waveScore | 0,
-      mode: e.mode || 'endless',
+      kills: e.kills | 0,
+      mode: mode,
+      cat: mode === 'vs' ? 'vs' : 'survivor',
       ts: e.ts || Date.now(),
       ver: e.ver || '1.2',
     };
+  }
+
+  function betterEntry(a, b) {
+    // Prefer higher score, then wave, then kills
+    if (a.score !== b.score) return a.score > b.score;
+    if (a.wave !== b.wave) return a.wave > b.wave;
+    if (a.kills !== b.kills) return a.kills > b.kills;
+    return a.ts > b.ts;
+  }
+
+  function betterBattler(a, b) {
+    // VS: kills first, then score
+    if (a.kills !== b.kills) return a.kills > b.kills;
+    if (a.score !== b.score) return a.score > b.score;
+    return a.ts > b.ts;
   }
 
   function mergeBoards(...lists) {
@@ -90,17 +108,30 @@
     lists.flat().forEach((raw) => {
       const e = normalizeEntry(raw);
       if (!e) return;
-      const key = e.name + '|' + e.score + '|' + e.wave + '|' + e.ts;
+      const key = e.name + '|' + e.cat + '|' + e.score + '|' + e.wave + '|' + e.ts;
       map.set(key, e);
     });
-    const bestByName = new Map();
+    // Best per name+category
+    const best = new Map();
     [...map.values()].forEach((e) => {
-      const prev = bestByName.get(e.name);
-      if (!prev || e.score > prev.score || (e.score === prev.score && e.wave > prev.wave)) {
-        bestByName.set(e.name, e);
-      }
+      const k = e.name + '|' + e.cat;
+      const prev = best.get(k);
+      const win = e.cat === 'vs' ? betterBattler(e, prev || { kills: -1, score: -1, ts: 0 }) : betterEntry(e, prev || { score: -1, wave: -1, ts: 0 });
+      if (!prev || win) best.set(k, e);
     });
-    return [...bestByName.values()].sort((a, b) => b.score - a.score || b.wave - a.wave || b.ts - a.ts);
+    return [...best.values()].sort((a, b) => b.score - a.score || b.wave - a.wave || b.ts - a.ts);
+  }
+
+  function splitCategories(list) {
+    const survivor = (list || [])
+      .filter((e) => e.cat !== 'vs' && e.mode !== 'vs')
+      .sort((a, b) => b.score - a.score || b.wave - a.wave)
+      .slice(0, 10);
+    const battler = (list || [])
+      .filter((e) => e.cat === 'vs' || e.mode === 'vs')
+      .sort((a, b) => b.kills - a.kills || b.score - a.score)
+      .slice(0, 10);
+    return { survivor, battler };
   }
 
   function fieldVal(f) {
@@ -120,6 +151,7 @@
       score: Number(fieldVal(f.score)),
       wave: Number(fieldVal(f.wave) || 0),
       waveScore: Number(fieldVal(f.waveScore) || 0),
+      kills: Number(fieldVal(f.kills) || 0),
       mode: fieldVal(f.mode) || 'endless',
       ts: Number(fieldVal(f.ts) || Date.now()),
       ver: fieldVal(f.ver) || '1.2',
@@ -133,6 +165,7 @@
         score: { integerValue: String(row.score | 0) },
         wave: { integerValue: String(row.wave | 0) },
         waveScore: { integerValue: String(row.waveScore | 0) },
+        kills: { integerValue: String(row.kills | 0) },
         mode: { stringValue: String(row.mode || 'endless') },
         ts: { integerValue: String(row.ts | 0) },
         ver: { stringValue: String(row.ver || '1.2') },
@@ -261,17 +294,31 @@
       return merged.slice(0, limit);
     },
 
+    async fetchCategories(limit) {
+      limit = limit || 10;
+      const all = await this.fetchTop(80);
+      const { survivor, battler } = splitCategories(all);
+      return {
+        survivor: survivor.slice(0, limit),
+        battler: battler.slice(0, limit),
+        error: this.lastRemoteError,
+      };
+    },
+
     async submitScore(entry) {
       const row = normalizeEntry({
         name: entry.name,
         score: entry.score,
         wave: entry.wave,
         waveScore: entry.waveScore,
+        kills: entry.kills,
         mode: entry.mode,
         ts: Date.now(),
         ver: '1.2',
       });
-      if (!row || row.score <= 0) return { ok: false, remote: false };
+      // Allow VS posts even with low score if they have kills
+      if (!row) return { ok: false, remote: false };
+      if (row.score <= 0 && row.kills <= 0) return { ok: false, remote: false };
 
       const local = loadLocalBoard();
       local.push(row);
@@ -348,7 +395,10 @@
       this.status = 'hosting';
       this.ready = false;
       this.meReady = false;
-      this.opp = { name: 'OPP', score: 0, waveScore: 0, lives: 3, ready: false, dead: false };
+      this._matchStarted = false;
+      this._helloOk = false;
+      this._pendingDiff = 'hard';
+      this.opp = { name: 'OPP', score: 0, waveScore: 0, lives: 3, kills: 0, ready: false, dead: false };
 
       return new Promise((resolve, reject) => {
         const id = PEER_PREFIX + this.roomCode;
@@ -362,7 +412,7 @@
           reject(err);
         });
         this.peer.on('connection', (conn) => {
-          if (this.conn) {
+          if (this.conn && this.conn.open) {
             conn.close();
             return;
           }
@@ -383,10 +433,16 @@
       this.status = 'joining';
       this.ready = false;
       this.meReady = false;
-      this.opp = { name: 'HOST', score: 0, waveScore: 0, lives: 3, ready: false, dead: false };
+      this._matchStarted = false;
+      this._helloOk = false;
+      this.opp = { name: 'HOST', score: 0, waveScore: 0, lives: 3, kills: 0, ready: false, dead: false };
 
       return new Promise((resolve, reject) => {
         this.peer = new Peer(undefined, { debug: 1 });
+        let settled = false;
+        const failTimer = setTimeout(() => {
+          if (!settled && this.status === 'joining') reject(new Error('Room timeout — check code / internet'));
+        }, 15000);
         this.peer.on('open', () => {
           const conn = this.peer.connect(PEER_PREFIX + this.roomCode, { reliable: true });
           this.conn = conn;
@@ -394,14 +450,25 @@
             this.wireConn(conn);
             this.status = 'connected';
             this.send({ t: 'hello', name: this.myName() });
+            settled = true;
+            clearTimeout(failTimer);
             resolve(this.roomCode);
           });
-          conn.on('error', reject);
+          conn.on('error', (err) => {
+            if (!settled) {
+              settled = true;
+              clearTimeout(failTimer);
+              reject(err);
+            }
+          });
         });
-        this.peer.on('error', reject);
-        setTimeout(() => {
-          if (this.status === 'joining') reject(new Error('Room timeout — check code / internet'));
-        }, 15000);
+        this.peer.on('error', (err) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(failTimer);
+            reject(err);
+          }
+        });
       });
     },
 
@@ -414,7 +481,12 @@
     },
 
     wireConn(conn) {
-      this.status = 'connected';
+      const onOpen = () => {
+        this.status = 'connected';
+        if (this.role === 'host') this.send({ t: 'hello', name: this.myName() });
+        if (this.onConnect) this.onConnect();
+        if (this.onLobby) this.onLobby();
+      };
       conn.on('data', (msg) => this.handleMsg(msg));
       conn.on('close', () => {
         this.status = 'disconnected';
@@ -422,8 +494,27 @@
         if (typeof Toast !== 'undefined') Toast.show('OPPONENT DISCONNECTED', 'pink');
         if (this.onDisconnect) this.onDisconnect();
       });
-      if (this.role === 'host') this.send({ t: 'hello', name: this.myName() });
-      if (this.onConnect) this.onConnect();
+      conn.on('error', () => {
+        this.status = 'error';
+        if (this.onLobby) this.onLobby();
+      });
+      // Critical: wait until data channel is open (host race fix)
+      if (conn.open) onOpen();
+      else conn.on('open', onOpen);
+    },
+
+    /** Host starts match once (auto after hello, or manual READY) */
+    beginMatch(diff) {
+      if (this._matchStarted) return false;
+      if (this.role !== 'host') return false;
+      if (!this.conn || !this.conn.open) return false;
+      this._matchStarted = true;
+      this.vsActive = true;
+      const seed = (Math.random() * 1e9) | 0;
+      const d = diff || this._pendingDiff || 'hard';
+      this.send({ t: 'start', seed, diff: d, mode: 'survival' });
+      if (this.onStart) this.onStart({ seed, diff: d, mode: 'survival' });
+      return true;
     },
 
     handleMsg(msg) {
@@ -431,24 +522,33 @@
       switch (msg.t) {
         case 'hello':
           this.opp.name = msg.name || 'OPP';
+          this._helloOk = true;
           this.send({ t: 'hello_ack', name: this.myName() });
           if (this.onLobby) this.onLobby();
+          // Host: auto-start shortly after opponent connects
+          if (this.role === 'host') {
+            setTimeout(() => {
+              if (!this._matchStarted) this.beginMatch(this._pendingDiff);
+            }, 700);
+          }
           break;
         case 'hello_ack':
           this.opp.name = msg.name || this.opp.name;
+          this._helloOk = true;
           if (this.onLobby) this.onLobby();
           break;
         case 'ready':
           this.opp.ready = true;
+          if (msg.diff) this._pendingDiff = msg.diff;
           if (this.onLobby) this.onLobby();
-          if (this.role === 'host' && this.meReady && this.opp.ready) {
-            const seed = (Math.random() * 1e9) | 0;
-            const diff = msg.diff || 'hard';
-            this.send({ t: 'start', seed, diff, mode: 'survival' });
-            if (this.onStart) this.onStart({ seed, diff, mode: 'survival' });
+          if (this.role === 'host' && (this.meReady || this.opp.ready)) {
+            this.beginMatch(msg.diff || this._pendingDiff);
           }
           break;
         case 'start':
+          if (this._matchStarted) break;
+          this._matchStarted = true;
+          this.vsActive = true;
           if (this.onStart) this.onStart({ seed: msg.seed, diff: msg.diff || 'hard', mode: msg.mode || 'survival' });
           break;
         case 'input':
@@ -515,11 +615,13 @@
 
     setReady(diff) {
       this.meReady = true;
-      this.send({ t: 'ready', diff: diff || 'hard', name: this.myName() });
-      if (this.role === 'host' && this.opp.ready) {
-        const seed = (Math.random() * 1e9) | 0;
-        this.send({ t: 'start', seed, diff: diff || 'hard', mode: 'survival' });
-        if (this.onStart) this.onStart({ seed, diff: diff || 'hard', mode: 'survival' });
+      this._pendingDiff = diff || 'hard';
+      this.send({ t: 'ready', diff: this._pendingDiff, name: this.myName() });
+      if (this.role === 'host') {
+        // Host can force start on READY once connected
+        if (this.status === 'connected' || this.opp.ready || this._helloOk) {
+          this.beginMatch(this._pendingDiff);
+        }
       }
     },
 
@@ -585,6 +687,8 @@
       this.vsActive = false;
       this.status = 'idle';
       this.meReady = false;
+      this._matchStarted = false;
+      this._helloOk = false;
       this.lastWorld = null;
       this.lastGuestInput = { L: 0, R: 0, shoot: 0, special: 0, x: 0, y: 0, seq: 0 };
     },

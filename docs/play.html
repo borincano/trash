@@ -448,22 +448,15 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 
 <!-- GLOBAL RANK -->
 <div class="page" id="pageRank">
-  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>GLOBAL RANK</h2></div>
+  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>RANKING</h2></div>
   <div class="page-body">
-    <div class="section-h"><h3>WORLD TOP</h3><button class="btn sm cyan" id="rankRefresh" type="button">REFRESH</button></div>
-    <div class="chip" id="rankStatus" style="margin-bottom:10px">Loading…</div>
-    <div id="globalList"></div>
-    <div class="section-h" style="margin-top:16px"><h3>FIREBASE GLOBAL</h3></div>
-    <p style="font-size:.85rem;color:var(--muted);margin-bottom:8px;line-height:1.45">
-      Ranking fijo en <b style="color:var(--c)">Firestore galaxymuzz</b> → colección <b style="color:var(--c)">muzzgalaxy_scores</b>.
-      No toca <code>social</code> ni <code>private</code> (muzzsnap).
-    </p>
-    <input class="input" id="lbUrlInput" placeholder="Firestore URL (default galaxymuzz)" style="margin-bottom:8px;letter-spacing:.04em;font-size:.75rem;text-align:left">
-    <input class="input" id="lbKeyInput" placeholder="Web API key (optional)" style="margin-bottom:8px;letter-spacing:.04em;font-size:.75rem;text-align:left" type="password">
-    <div class="btn-row" style="gap:8px">
-      <button class="btn cyan" id="lbSaveCfg" type="button" style="flex:1">SAVE</button>
-      <button class="btn ghost" id="lbResetGlobal" type="button" style="flex:1">USE FIREBASE</button>
-    </div>
+    <div class="section-h"><h3>🏆 SURVIVOR</h3><button class="btn sm cyan" id="rankRefresh" type="button">REFRESH</button></div>
+    <p style="font-size:.8rem;color:var(--muted);margin:-4px 0 8px">Top 10 · points &amp; wave</p>
+    <div id="survivorList"></div>
+    <div class="section-h" style="margin-top:18px"><h3>⚔ VS BATTLER</h3></div>
+    <p style="font-size:.8rem;color:var(--muted);margin:-4px 0 8px">Top 10 · Super Survival</p>
+    <div id="battlerList"></div>
+    <div class="chip" id="rankStatus" style="margin-top:14px">Loading…</div>
   </div>
 </div>
 
@@ -479,18 +472,17 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <div class="set-row"><span>DIFFICULTY</span>
       <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
     </div>
-    <div class="btn-row" style="margin:12px 0">
-      <button class="btn cyan" id="vsHostBtn" type="button" style="flex:1">HOST ROOM</button>
+    <div class="btn-row" style="margin:12px 0;gap:8px">
+      <button class="btn cyan" id="vsHostBtn" type="button" style="flex:1">CREATE ROOM</button>
+      <button class="btn pink" id="vsJoinBtn" type="button" style="flex:1">JOIN ROOM</button>
     </div>
     <div class="section-h"><h3>ROOM CODE</h3></div>
     <div id="vsCodeBox" style="font-family:Orbitron,sans-serif;font-size:1.6rem;letter-spacing:.25em;text-align:center;color:var(--y);padding:12px;border:1px solid rgba(255,208,0,.35);border-radius:12px;margin-bottom:12px;min-height:52px">— — — — —</div>
-    <div class="section-h"><h3>JOIN FRIEND</h3></div>
-    <input class="input" id="vsJoinInput" maxlength="6" placeholder="ENTER CODE" style="margin-bottom:8px;letter-spacing:.2em">
-    <button class="btn pink" id="vsJoinBtn" type="button" style="width:100%;margin-bottom:12px">JOIN ROOM</button>
-    <div class="chip" id="vsStatus">Idle · create or join a room</div>
+    <input class="input" id="vsJoinInput" maxlength="6" placeholder="ENTER CODE TO JOIN" style="margin-bottom:8px;letter-spacing:.2em">
+    <div class="chip" id="vsStatus">Create or join a room</div>
     <div id="vsLobbyInfo" style="margin-top:12px;font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,232,255,.7);line-height:1.6"></div>
-    <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-top:12px" disabled>READY · START</button>
-    <button class="btn grey" id="vsCancelBtn" type="button" style="width:100%;margin-top:8px">DISCONNECT</button>
+    <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-top:12px" disabled>FIGHT · START</button>
+    <button class="btn grey" id="vsCancelBtn" type="button" style="width:100%;margin-top:8px">CANCEL</button>
   </div>
 </div>
 
@@ -2311,8 +2303,14 @@ const Game={
     const achMC=checkAchievements(GS);Meta.save();
 
     if(typeof Online!=='undefined'){
-      Online.submitScore({name:Meta.callsign||'PILOT',score:GS.score,wave:GS.wave,waveScore:GS.waveScore,mode:GS.mode})
-        .then((r)=>{ if(r.remote&&r.ok) Toast.show('SCORE POSTED ONLINE','ok'); }).catch(()=>{});
+      Online.submitScore({
+        name:Meta.callsign||'PILOT',
+        score:GS.score,
+        wave:GS.wave,
+        waveScore:GS.waveScore,
+        kills:GS.kills,
+        mode:GS.mode
+      }).catch(()=>{});
     }
 
     $('goStars').textContent='★'.repeat(stars)+'☆'.repeat(5-stars);
@@ -2537,33 +2535,49 @@ function renderSocial(){
   });
 }
 
-async function renderGlobalRank(){
-  const st=$('rankStatus');const list=$('globalList');
-  st.textContent='Fetching WORLD ranking…';
-  list.innerHTML='';
-  if(typeof Online!=='undefined'){
-    if(!Online.cfg.leaderboardUrl) Online.resetToGlobalDefault();
-    $('lbUrlInput').value=Online.cfg.leaderboardUrl||'';
-    $('lbKeyInput').value=Online.cfg.apiKey||'';
+function rankRow(r,i,kind){
+  const row=document.createElement('div');row.className='list-row';
+  const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+  if(kind==='vs'){
+    row.innerHTML=`<div class="lr-l"><div class="lr-t">${medal} ${r.name}</div><div class="lr-s">KILLS ${r.kills||0} · SCORE ${(r.score||0).toLocaleString()}</div></div><div class="lr-r">${r.kills||0} K</div>`;
+  } else {
+    row.innerHTML=`<div class="lr-l"><div class="lr-t">${medal} ${r.name}</div><div class="lr-s">WAVE ${r.wave||1} · ${(r.mode||'endless').toUpperCase()}</div></div><div class="lr-r">${(r.score||0).toLocaleString()}</div>`;
   }
+  return row;
+}
+function emptyRank(msg){
+  const d=document.createElement('div');
+  d.style.cssText='padding:12px;color:var(--muted);font-size:.85rem;text-align:center';
+  d.textContent=msg;
+  return d;
+}
+async function renderGlobalRank(){
+  const st=$('rankStatus');
+  const surv=$('survivorList');
+  const bat=$('battlerList');
+  if(st) st.textContent='Updating…';
+  if(surv) surv.innerHTML='';
+  if(bat) bat.innerHTML='';
   try{
-    const top=await Online.fetchTop(30);
-    const err=Online.lastRemoteError;
-    if(!top.length){
-      st.textContent=err?('Cloud offline — '+err):'World board empty — finish a run to post your score.';
-      return;
+    const data=await Online.fetchCategories(10);
+    const s=data.survivor||[];
+    const b=data.battler||[];
+    if(surv){
+      if(!s.length) surv.appendChild(emptyRank('No survivor scores yet — finish a run'));
+      else s.forEach((r,i)=>surv.appendChild(rankRow(r,i,'survivor')));
     }
-    st.textContent=err
-      ?('⚠ Offline cache · '+top.length+' pilots (cloud: '+err+')')
-      :('🌍 GLOBAL · '+top.length+' pilots online');
-    top.forEach((r,i)=>{
-      const row=document.createElement('div');row.className='list-row';
-      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
-      row.innerHTML=`<div class="lr-l"><div class="lr-t">${medal} ${r.name}</div><div class="lr-s">${(r.mode||'').toUpperCase()} · W${r.wave} · OBJ ${r.waveScore||0}</div></div><div class="lr-r">${r.score.toLocaleString()}</div>`;
-      list.appendChild(row);
-    });
+    if(bat){
+      if(!b.length) bat.appendChild(emptyRank('No VS battles yet — play Super Survival'));
+      else b.forEach((r,i)=>bat.appendChild(rankRow(r,i,'vs')));
+    }
+    if(st){
+      if(data.error) st.textContent='Showing saved ranks';
+      else st.textContent=`Top ${s.length} survivors · Top ${b.length} battlers`;
+    }
   }catch(e){
-    st.textContent='Rank fetch error';
+    if(st) st.textContent='Could not load ranks';
+    if(surv) surv.appendChild(emptyRank('—'));
+    if(bat) bat.appendChild(emptyRank('—'));
   }
 }
 
@@ -2574,12 +2588,22 @@ function renderVsLobby(){
 function updateVsStatus(){
   if(typeof Online==='undefined')return;
   const st=$('vsStatus');const info=$('vsLobbyInfo');const ready=$('vsReadyBtn');
-  const map={idle:'Idle · create or join a room',hosting:'Creating room…',waiting:'Waiting for opponent…',joining:'Joining…',connected:'Connected · both press READY',disconnected:'Disconnected',error:'Connection error'};
+  const map={
+    idle:'Create a room or enter a code',
+    hosting:'Creating room…',
+    waiting:'Share the code — waiting for opponent…',
+    joining:'Joining room…',
+    connected:'Opponent linked — starting fight…',
+    disconnected:'Disconnected',
+    error:'Connection error — try again'
+  };
   st.textContent=map[Online.status]||Online.status;
   if(Online.roomCode)$('vsCodeBox').textContent=Online.roomCode.split('').join(' ');
-  info.innerHTML=`YOU: <b style="color:var(--c)">${Meta.callsign||'PILOT'}</b>${Online.meReady?' ✓':''}<br>OPP: <b style="color:var(--m)">${Online.opp.name||'—'}</b>${Online.opp.ready?' ✓':''}<br>ROLE: ${(Online.role||'—').toUpperCase()}`;
+  info.innerHTML=`YOU: <b style="color:var(--c)">${Meta.callsign||'PILOT'}</b><br>OPP: <b style="color:var(--m)">${Online.opp.name||'—'}</b><br>ROLE: ${(Online.role||'—').toUpperCase()}${Online._matchStarted?' · STARTING':''}`;
+  // Enable fight button when room exists
   ready.disabled=!(Online.status==='connected'||Online.status==='waiting');
   if(Online.status==='connected') ready.disabled=false;
+  if(Online._matchStarted) ready.disabled=true;
 }
 
 function seedRandom(seed){
@@ -2694,21 +2718,37 @@ function wireUI(){
   $('modeRank').onclick=()=>showPage('pageRank','social');
 
   // VS Super Survival lobby
-  function wireVsNet(){
-    Online.onConnect=()=>{updateVsStatus();Toast.show('OPPONENT JOINED','ok');};
-    Online.onLobby=()=>updateVsStatus();
-    Online.onStart=({seed,diff})=>{
+  let vsLaunching=false;
+  function launchVsMatch({seed,diff}){
+    if(vsLaunching) return;
+    vsLaunching=true;
+    try{
+      Toast.show('FIGHT!','ok');
       hideAllMenus();
-      Game.start({mode:'vs',diff:diff||$('vsDiff').value,seed});
+      if($('pageVs')) $('pageVs').classList.remove('on');
+      if($('home')) $('home').classList.remove('on');
+      Game.start({mode:'vs',diff:diff||$('vsDiff').value||'hard',seed});
+    }catch(e){
+      vsLaunching=false;
+      Toast.show('START FAILED','pink');
+      console.error(e);
+    }
+    setTimeout(()=>{vsLaunching=false;},2000);
+  }
+  function wireVsNet(){
+    Online.onConnect=()=>{
+      updateVsStatus();
+      Toast.show('OPPONENT JOINED','ok');
+      // Host may auto-start via online.js; guest waits for start packet
     };
+    Online.onLobby=()=>updateVsStatus();
+    Online.onStart=({seed,diff})=>launchVsMatch({seed,diff});
     Online.onWorld=(w)=>{applyVsWorld(w);};
     Online.onEvt=(msg)=>{
       if(msg.kind==='end'&&isVsGuest()&&!GS.vsEnded){
-        // Host reports their result; invert for guest perspective on KO
         if(msg.reason==='ko_win') Game.endVs('ko_lose');
         else if(msg.reason==='ko_lose') Game.endVs('ko_win');
         else {
-          // timer: recompute from last world snapshot
           if(Online.lastWorld&&Online.lastWorld.me&&Online.lastWorld.you){
             GS.kills=Online.lastWorld.you.kills|0;
             GS.lives=Online.lastWorld.you.lives|0;
@@ -2726,50 +2766,37 @@ function wireUI(){
     Online.onSync=()=>updateVsHud();
     Online.onDisconnect=()=>{
       updateVsStatus();
-      if(GS.mode==='vs'&&Online.vsActive&&!GS.vsEnded) Game.endVs('disconnect');
+      if(GS.mode==='vs'&&Engine.running&&!GS.vsEnded) Game.endVs('disconnect');
     };
   }
   $('vsHostBtn').onclick=async()=>{
     try{
+      wireVsNet(); // handlers BEFORE peer is live
       $('vsStatus').textContent='Creating room…';
       const code=await Online.hostRoom();
       $('vsCodeBox').textContent=code.split('').join(' ');
-      Toast.show('ROOM '+code,'ok');
+      Toast.show('CODE '+code+' — share it','ok');
       updateVsStatus();
-      wireVsNet();
     }catch(e){Toast.show('HOST FAILED','pink');$('vsStatus').textContent=String(e.message||e);}
   };
   $('vsJoinBtn').onclick=async()=>{
     const code=$('vsJoinInput').value.trim();
     if(code.length<4){Toast.show('ENTER CODE');return;}
     try{
+      wireVsNet();
       $('vsStatus').textContent='Joining…';
       await Online.joinRoom(code);
       Toast.show('JOINED '+Online.roomCode,'ok');
       updateVsStatus();
-      wireVsNet();
     }catch(e){Toast.show('JOIN FAILED','pink');$('vsStatus').textContent=String(e.message||e);}
   };
   $('vsReadyBtn').onclick=()=>{
     Online.setReady($('vsDiff').value);
     updateVsStatus();
-    Toast.show('READY SENT','ok');
+    Toast.show(Online.role==='host'?'STARTING…':'READY — wait for host','ok');
   };
-  $('vsCancelBtn').onclick=()=>{Online.destroyPeer();$('vsCodeBox').textContent='— — — — —';updateVsStatus();};
+  $('vsCancelBtn').onclick=()=>{Online.destroyPeer();$('vsCodeBox').textContent='— — — — —';vsLaunching=false;updateVsStatus();};
   $('rankRefresh').onclick=()=>renderGlobalRank();
-  $('lbSaveCfg').onclick=()=>{
-    Online.setConfig({leaderboardUrl:$('lbUrlInput').value.trim(),apiKey:$('lbKeyInput').value.trim()});
-    Toast.show('ONLINE CONFIG SAVED','ok');
-    renderGlobalRank();
-  };
-  const resetBtn=$('lbResetGlobal');
-  if(resetBtn) resetBtn.onclick=()=>{
-    Online.resetToGlobalDefault();
-    $('lbUrlInput').value=Online.cfg.leaderboardUrl;
-    $('lbKeyInput').value='';
-    Toast.show('🌍 GLOBAL RANK ACTIVE','ok');
-    renderGlobalRank();
-  };
 
   $('plusMC').onclick=$('plusNC').onclick=()=>showPage('pageShop','shop');
 
