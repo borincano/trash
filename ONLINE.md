@@ -69,9 +69,21 @@ After Publish, scores appear under Data → collection `muzzgalaxy_scores`.
 
 Works on **Spark (free)** plan.
 
-## 2) VS 1v1 (internet)
+## 2) SUPER SURVIVAL VS (internet)
 
-PeerJS / WebRTC — no Firebase needed.
+**Shared arena** (not two parallel solo runs):
+
+- Both ships on the **same screen**
+- Shared alien waves (host is authority)
+- **PvP**: shoot the other pilot (lives / KO)
+- Win: **KO** or most **kills** when the 60s timer ends
+- PeerJS / WebRTC — no Firebase needed for multiplayer
+
+How to play:
+1. Both open the same HTTPS game URL
+2. Host creates room → share code
+3. Guest joins → both READY
+4. Fight aliens + each other
 
 ## Play
 - https://borincano.github.io/trash/docs/play.html  

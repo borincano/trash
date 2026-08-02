@@ -377,8 +377,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
       <div class="mode-card" id="modeVs">
         <div class="mc-badge">ONLINE</div>
         <div class="mc-ico">⚔</div>
-        <div class="mc-t">VS 1v1</div>
-        <div class="mc-d">2 players · same time · internet</div>
+        <div class="mc-t">SUPER SURVIVAL</div>
+        <div class="mc-d">Same arena · aliens + PvP · 2 ships</div>
       </div>
       <div class="mode-card" id="modeRank">
         <div class="mc-ico">🌐</div>
@@ -469,10 +469,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 
 <!-- VS LOBBY -->
 <div class="page" id="pageVs">
-  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>VS 1v1 ONLINE</h2></div>
+  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>SUPER SURVIVAL</h2></div>
   <div class="page-body">
     <p style="font-size:.9rem;color:var(--muted);line-height:1.5;margin-bottom:12px">
-      Two pilots, same 60s assault, same seed. Highest <b style="color:var(--c)">wave objective score</b> wins. Needs internet (WebRTC).
+      <b style="color:var(--m)">Same arena</b> · both ships on screen · kill shared aliens · <b style="color:var(--y)">shoot each other</b>.
+      Host runs the world. KO the rival or lead kills when the timer ends. Needs internet (WebRTC).
     </p>
     <div class="section-h"><h3>YOUR CALLSIGN</h3><span id="vsName">PILOT</span></div>
     <div class="set-row"><span>DIFFICULTY</span>
@@ -532,8 +533,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <div class="obj-track"><div id="objFill"></div></div>
     <div class="obj-meta"><span id="objWaveLbl">WAVE 1 · 60s ASSAULT</span><span class="ramp" id="objRamp">RAMP 1/6</span></div>
   </div>
-  <div id="vsHud" style="display:none;position:absolute;top:calc(118px + var(--safe-t));left:50%;transform:translateX(-50%);z-index:46;pointer-events:none;width:min(340px,90vw);text-align:center;font-family:'Share Tech Mono',monospace;font-size:.58rem;letter-spacing:.06em;color:rgba(255,45,155,.9);background:rgba(0,0,0,.45);border:1px solid rgba(255,45,155,.4);padding:4px 8px;border-radius:8px">
-    VS · YOU <b id="vsYouScore" style="color:var(--c)">0</b> — <b id="vsOppName" style="color:var(--m)">OPP</b> <b id="vsOppScore" style="color:var(--y)">0</b>
+  <div id="vsHud" style="display:none;position:absolute;top:calc(118px + var(--safe-t));left:50%;transform:translateX(-50%);z-index:46;pointer-events:none;width:min(360px,92vw);text-align:center;font-family:'Share Tech Mono',monospace;font-size:.55rem;letter-spacing:.05em;color:rgba(255,45,155,.95);background:rgba(0,0,0,.5);border:1px solid rgba(255,45,155,.45);padding:5px 8px;border-radius:8px;line-height:1.45">
+    ⚔ SUPER SURVIVAL<br>
+    YOU ◆<span id="vsYouLives">3</span> · K<span id="vsYouScore">0</span>
+    &nbsp;vs&nbsp;
+    <b id="vsOppName" style="color:var(--m)">OPP</b> ◆<span id="vsOppLives">3</span> · K<span id="vsOppScore">0</span>
   </div>
   <div id="missionBar"></div>
   <div id="bossBar"><div class="boss-lbl" id="bossLbl">THREAT</div><div class="boss-track"><div id="bossFill"></div></div></div>
@@ -1352,6 +1356,7 @@ function assaultPower(){
 }
 function continuousSpawn(){
   if(!GS.assaultActive||GS.waveState!=='active') return;
+  if(isVsGuest()) return; // host-authoritative arena
   const p=assaultPower();
   // hard cap on live enemies for performance + chaos
   const cap=Math.min(18+GS.wave*2+GS.rampTier*3, 48);
@@ -1398,7 +1403,7 @@ function shoot(){
   if(now-lastShot<rate)return;lastShot=now;GS.shots++;AudioSys.shoot();haptic(6);
   const sz=GS.size,bx=GS.posX+sz/2,by=GS.posY,spd=740*GS.upg.bulletSpd*bon.bullet;
   const critChance=(GS.upg.crit||0)+(hasPerk('sharp')?.12:0)+bon.crit;
-  const mk=(ox,ang,col,w=4,h=18)=>{const crit=Math.random()<critChance;GS.bullets.push({x:bx+ox,y:by,vx:Math.sin(ang||0)*spd*.35,vy:-spd,w:crit?w+1:w,h:crit?h+4:h,col:crit?'#ffd000':col,pierce:GS.upg.piercing?3:0,dmg:crit?2:1,crit});};
+  const mk=(ox,ang,col,w=4,h=18)=>{const crit=Math.random()<critChance;GS.bullets.push({x:bx+ox,y:by,vx:Math.sin(ang||0)*spd*.35,vy:-spd,w:crit?w+1:w,h:crit?h+4:h,col:crit?'#ffd000':col,pierce:GS.upg.piercing?3:0,dmg:crit?2:1,crit,owner:vsOwnerLocal()});};
   const triple=GS.upg.triple||GS.temp.triple>0,spread=GS.upg.spread;
   mk(0,0,shipData().color,4,22);
   if(spread)[-.35,-.18,.18,.35].forEach(a=>mk(a*40,a,'#ff2d9b',3,16));
@@ -1505,6 +1510,7 @@ function spawnEnemy(opts){
     name:isBoss?pick(['VOID REAVER','NEURAL TITAN','HEXA-CORE','NULL SERAPH','OMEGA WRAITH','ABYSS CROWN']):def.label,
     bossVar:isBoss?(GS.wave%5):0
   };
+  e.nid=(GS._nid=(GS._nid||1)+1);
   GS.enemies.push(e);
   if(isBoss){GS.boss=e;UI.boss(true,e.hp,e.maxHp,1,e.name);AudioSys.boss();Engine.shake(12,200);Flash.do('#ff6a00',.2);}
 }
@@ -1630,12 +1636,22 @@ function bossShoot(e){
     }
   }
 }
-function killEnemy(e,i){
+function killEnemy(e,i,owner){
   const shipSc=shipData().score||1;
   const basePts=e.pts||(e.isBoss?280:e.elite?22:12);
   const pts=Math.round(basePts*Math.max(1,GS.combo*.48)*GS.upg.scoreMult*GS.styleMult*diffMul().mult*shipSc);
-  GS.score+=pts;GS.waveScore+=pts;GS.kills++;if(e.isBoss)GS.bossesKilled++;if(e.elite)GS.eliteKills++;
-  UI.score();UI.obj();UI.mission();
+  // Super Survival: credit kill to bullet owner
+  if(isVs()&&owner==='guest'&&GS.opp){
+    GS.opp.kills=(GS.opp.kills||0)+1;
+    GS.opp.score=(GS.opp.score||0)+pts;
+    GS.opp.waveScore=(GS.opp.waveScore||0)+pts;
+    if(e.isBoss)GS.bossesKilled++;
+    if(e.elite)GS.eliteKills++;
+  } else {
+    GS.score+=pts;GS.waveScore+=pts;GS.kills++;
+    if(e.isBoss)GS.bossesKilled++;if(e.elite)GS.eliteKills++;
+  }
+  UI.score();UI.obj();UI.mission();updateVsHud();
   FloatText.add(e.x+e.w/2,e.y+e.h/2,'+'+pts,e.isBoss?'#ff9900':e.elite?'#ff2d9b':'#00e8ff',e.isBoss?18:13);
   GS.combo++;GS.maxCombo=Math.max(GS.maxCombo,GS.combo);GS.comboT=hasPerk('comboist')?2600:2000;UI.combo();
   Particles.explosion(e.x+e.w/2,e.y+e.h/2,e.isBoss);AudioSys.boom(e.isBoss);haptic(e.isBoss?40:10);
@@ -1669,23 +1685,190 @@ function collectDrop(d){
 function aabb(ax,ay,aw,ah,bx,by,bw,bh,pad=0){return ax+pad<bx+bw-pad&&ax+aw-pad>bx+pad&&ay+pad<by+bh-pad&&ay+ah-pad>by+pad;}
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 
+/* ── Super Survival VS helpers ── */
+function isVs(){return GS.mode==='vs';}
+function isVsHost(){return isVs()&&typeof Online!=='undefined'&&Online.role==='host';}
+function isVsGuest(){return isVs()&&typeof Online!=='undefined'&&Online.role==='guest';}
+function vsOwnerLocal(){return isVsHost()?'host':(isVsGuest()?'guest':'solo');}
+function updateVsHud(){
+  if(!isVs())return;
+  const o=GS.opp||{};
+  const yk=GS.kills|0, ok=o.kills|0;
+  if($('vsYouScore'))$('vsYouScore').textContent=String(yk);
+  if($('vsOppScore'))$('vsOppScore').textContent=String(ok);
+  if($('vsYouLives'))$('vsYouLives').textContent=String(GS.lives|0);
+  if($('vsOppLives'))$('vsOppLives').textContent=String(o.lives|0);
+  if($('vsOppName'))$('vsOppName').textContent=o.name||Online.opp.name||'OPP';
+}
+function initVsArena(){
+  const sz=playerSize();
+  const baseY=Engine.H-Engine.H*.2-sz;
+  const host=isVsHost()||(!isVsGuest());
+  // Local ship spawn: host left, guest right
+  GS.posX=host?Engine.W*.28-sz/2:Engine.W*.72-sz/2;
+  GS.posY=baseY;
+  GS.size=sz;
+  GS.opp={
+    x:host?Engine.W*.72-sz/2:Engine.W*.28-sz/2,
+    y:baseY, size:sz,
+    lives:GS.lives, invuln:0, dead:false,
+    name:(typeof Online!=='undefined'&&Online.opp.name)||'OPP',
+    shipId:Meta.ship, kills:0, score:0, waveScore:0, pvpHits:0,
+    specialCD:0, lastShot:0
+  };
+  GS.pvpHits=0; GS.vsEnded=false; GS._nid=1;
+  if(typeof Online!=='undefined'){Online.vsActive=true;Online._worldAcc=0;Online._inputAcc=0;}
+}
+function applyShipMove(ship,left,right,dt,spdMul){
+  const sz=ship.size||GS.size;
+  const spd=.32*dt*(spdMul||1);
+  if(left) ship.x=Math.max(8,(ship.x!=null?ship.x:GS.posX)-spd);
+  if(right) ship.x=Math.min(Engine.W-sz-8,(ship.x!=null?ship.x:GS.posX)+spd);
+  ship.y=Engine.H-Engine.H*.2-sz;
+  return ship;
+}
+function fireFromShip(ship, owner, force){
+  if(!ship||ship.dead||ship.lives<=0)return;
+  const now=performance.now();
+  const rate=GS.upg.fireRate*(shipBonus().fire||1);
+  if(!force&&now-(ship.lastShot||0)<rate)return;
+  ship.lastShot=now;
+  if(owner===vsOwnerLocal()||owner==='host'&&isVsHost()||owner==='guest'&&isVsGuest()){GS.shots++;AudioSys.shoot();}
+  const sz=ship.size||GS.size;
+  const bx=(ship.x!=null?ship.x:GS.posX)+sz/2;
+  const by=ship.y!=null?ship.y:GS.posY;
+  const spd=740*GS.upg.bulletSpd*(shipBonus().bullet||1);
+  const col=owner==='guest'||(owner==='opp')?'#ff2d9b':'#00e8ff';
+  const mk=(ox,ang,w=4,h=18)=>{
+    GS.bullets.push({x:bx+ox,y:by,vx:Math.sin(ang||0)*spd*.35,vy:-spd,w,h,col,pierce:GS.upg.piercing?3:0,dmg:1,crit:false,owner});
+  };
+  if(GS.upg.spread){mk(0,0);mk(-10,-.2);mk(10,.2);mk(-18,-.38);mk(18,.38);}
+  else if(GS.upg.triple||GS.temp.triple>0){mk(0,0);mk(-12,-.12);mk(12,.12);}
+  else mk(0,0);
+}
+function damageVsShip(who, fromPvp){
+  // who: 'local' | 'opp'
+  if(who==='local'){
+    if(GS.invuln>0||GS.lives<=0)return;
+    if(GS.upg.shieldOn){GS.upg.shieldOn=false;UI.pwr();GS.invuln=400;FloatText.add(GS.posX,GS.posY-20,'SHIELD','#00e8ff',13);return;}
+    GS.lives--;GS.damageTaken++;GS.waveDamage++;UI.lives();
+    GS.invuln=1200;AudioSys.hurt();haptic([28,45,28]);Engine.shake(14,220);Flash.do(fromPvp?'#ff2d9b':'#ff0033',.22);
+    Particles.emit(GS.posX+GS.size/2,GS.posY+GS.size/2,{n:16,spdMin:40,spdMax:160,colors:fromPvp?['#ff2d9b','#ffd000','#fff']:['#ff3b5c','#ff2d9b','#fff']});
+    if(fromPvp){FloatText.add(GS.posX+GS.size/2,GS.posY-24,'PVP HIT','#ff2d9b',14);}
+    if(GS.lives<=0){GS.lives=0;if(isVs())Game.endVs('ko_lose');else Game.end(false);}
+  } else {
+    const o=GS.opp;if(!o||o.invuln>0||o.lives<=0||o.dead)return;
+    o.lives--;o.invuln=1200;
+    Particles.emit(o.x+o.size/2,o.y+o.size/2,{n:14,spdMin:40,spdMax:150,colors:['#ff2d9b','#fff']});
+    FloatText.add(o.x+o.size/2,o.y-20,fromPvp?'PVP!':'HIT','#ff2d9b',13);
+    AudioSys.hit();
+    if(fromPvp){GS.pvpHits=(GS.pvpHits||0)+1;GS.score+=500;GS.waveScore+=500;UI.score();}
+    if(o.lives<=0){o.lives=0;o.dead=true;GS.score+=2000;GS.waveScore+=2000;UI.score();FloatText.add(Engine.W/2,Engine.H*.36,'KO!','#ffd000',26);if(isVs())Game.endVs('ko_win');}
+  }
+  updateVsHud();
+}
+function packVsWorld(){
+  const o=GS.opp||{};
+  const enemies=GS.enemies.slice(0,40).map(e=>[e.nid|0,e.x|0,e.y|0,e.hp|0,e.kind||'scout',e.elite?1:0,e.isBoss?1:0,e.w|0,e.h|0,e.maxHp|0]);
+  const pBullets=GS.bullets.slice(0,50).map(b=>[b.x|0,b.y|0,b.vx|0,b.vy|0,b.owner==='guest'?1:0,b.w|0,b.h|0]);
+  const eBullets=GS.eBullets.slice(0,40).map(b=>[b.x|0,b.y|0,b.vx|0,b.vy|0,b.r|0]);
+  return {
+    tMs:performance.now()|0,
+    me:{x:GS.posX|0,y:GS.posY|0,lives:GS.lives|0,inv:GS.invuln|0,score:GS.score|0,kills:GS.kills|0,waveScore:GS.waveScore|0,dead:GS.lives<=0,name:Meta.callsign||'PILOT',ship:Meta.ship},
+    you:{x:o.x|0,y:o.y|0,lives:o.lives|0,inv:o.invuln|0,score:o.score|0,kills:o.kills|0,waveScore:o.waveScore|0,dead:!!o.dead,name:o.name||'OPP'},
+    enemies,pBullets,eBullets,
+    wave:GS.wave,waveTime:GS.waveTime|0,waveScore:GS.waveScore|0,ramp:GS.rampTier|0,goal:GS.waveGoal|0,
+    score:GS.score|0
+  };
+}
+function applyVsWorld(w){
+  if(!w||!isVsGuest())return;
+  // Host ship → local opp
+  if(w.me){
+    GS.opp=GS.opp||{};
+    GS.opp.x=w.me.x;GS.opp.y=w.me.y;GS.opp.lives=w.me.lives;GS.opp.invuln=w.me.inv;
+    GS.opp.kills=w.me.kills;GS.opp.score=w.me.score;GS.opp.waveScore=w.me.waveScore;
+    GS.opp.dead=!!w.me.dead;GS.opp.name=w.me.name||GS.opp.name;GS.opp.size=GS.size||playerSize();
+    GS.opp.shipId=w.me.ship||GS.opp.shipId;
+  }
+  // Soft reconcile guest (local) ship from authority
+  if(w.you){
+    const tx=w.you.x,ty=w.you.y;
+    GS.posX=GS.posX*.55+tx*.45;
+    GS.posY=ty;
+    GS.lives=w.you.lives;GS.invuln=w.you.inv;GS.kills=w.you.kills;
+    GS.score=Math.max(GS.score,w.you.score|0);GS.waveScore=w.you.waveScore|0;
+    UI.lives();UI.score();
+  }
+  GS.wave=w.wave||GS.wave;GS.waveTime=w.waveTime;GS.waveGoal=w.goal||GS.waveGoal;GS.rampTier=w.ramp|0;
+  // Rebuild enemies from snapshot
+  const base=playerSize();
+  GS.enemies=(w.enemies||[]).map(a=>{
+    const kind=a[4]||'scout';const def=ENEMY_KINDS[kind]||ENEMY_KINDS.scout;
+    const isBoss=!!a[6];const elite=!!a[5];
+    const w0=a[7]||base*(def.size||1);const h0=a[8]||w0;
+    return {nid:a[0],x:a[1],y:a[2],hp:a[3],maxHp:a[9]||a[3],kind,elite,isBoss,w:w0,h:h0,age:0,flash:0,pattern:'sine',spdMul:1,pts:10,shooter:false,shootCD:9999,phase:1,zig:0,name:isBoss?'BOSS':(def.label||kind)};
+  });
+  GS.boss=GS.enemies.find(e=>e.isBoss)||null;
+  if(GS.boss)UI.boss(true,GS.boss.hp,GS.boss.maxHp,1,GS.boss.name);else UI.boss(false);
+  GS.bullets=(w.pBullets||[]).map(a=>({x:a[0],y:a[1],vx:a[2],vy:a[3],owner:a[4]? 'guest':'host',w:a[5]||4,h:a[6]||18,col:a[4]?'#ff2d9b':'#00e8ff',pierce:0,dmg:1}));
+  GS.eBullets=(w.eBullets||[]).map(a=>({x:a[0],y:a[1],vx:a[2],vy:a[3],r:a[4]||4,col:'#ff6a00'}));
+  UI.obj();updateVsHud();
+}
+
 const Game={
   update(dt){
     if(GS.waveState!=='active'){BG.update(dt);Particles.update(dt);FloatText.update(dt);Flash.update(dt);this.renderBG();return;}
     BG.update(dt);AudioSys.intensity=clamp((GS.wave+GS.rampTier)/12,.15,1);
+
+    // ── GUEST: predict local ship + apply host world ──
+    if(isVsGuest()){
+      this.updateVsGuest(dt);
+      Particles.update(dt);FloatText.update(dt);Flash.update(dt);
+      return;
+    }
+
     const sz=GS.size=playerSize(),bon=shipBonus();
     GS.posY=Engine.H-Engine.H*.2-sz;
     const spd=.32*dt*GS.upg.moveSpd*bon.spd*(GS.temp.speed>0?1.55:1)/Math.max(.7,shipData().move||1);
     if(Input.left)GS.posX=Math.max(8,GS.posX-spd);
     if(Input.right)GS.posX=Math.min(Engine.W-sz-8,GS.posX+spd);
-    if(Input.shoot)shoot();if(Input.special){fireSpecial();Input.special=false;}
+
+    // VS host: also drive opponent from network input
+    if(isVsHost()&&GS.opp){
+      const gi=Online.lastGuestInput||{};
+      const ospd=spd;
+      if(gi.L) GS.opp.x=Math.max(8,GS.opp.x-ospd);
+      if(gi.R) GS.opp.x=Math.min(Engine.W-sz-8,GS.opp.x+ospd);
+      // light snap toward guest reported x for feel
+      if(gi.x) GS.opp.x=GS.opp.x*.7+gi.x*.3;
+      GS.opp.y=Engine.H-Engine.H*.2-sz;
+      GS.opp.size=sz;
+      if(GS.opp.invuln>0)GS.opp.invuln-=dt;
+      if(gi.shoot&&!GS.opp.dead) fireFromShip(GS.opp,'guest');
+      if(gi.special&&!GS.opp.dead){this.vsNova('opp');Online.lastGuestInput.special=false;}
+    }
+
+    if(Input.shoot){
+      if(isVsHost()){
+        if(!GS._hostGun)GS._hostGun={lastShot:0};
+        GS._hostGun.x=GS.posX;GS._hostGun.y=GS.posY;GS._hostGun.size=sz;
+        GS._hostGun.lives=GS.lives;GS._hostGun.dead=GS.lives<=0;
+        fireFromShip(GS._hostGun,'host');
+      } else shoot();
+    }
+    if(Input.special){
+      if(isVs()) this.vsNova('local');
+      else fireSpecial();
+      Input.special=false;
+    }
     if(GS.temp.triple>0){GS.temp.triple-=dt;if(GS.temp.triple<=0)UI.pwr();}
     if(GS.temp.speed>0){GS.temp.speed-=dt;if(GS.temp.speed<=0)UI.pwr();}
     if(GS.comboT>0){GS.comboT-=dt;if(GS.comboT<=0){GS.combo=0;UI.combo();}}
     if(GS.invuln>0)GS.invuln-=dt;if(GS.specialCD>0)GS.specialCD-=dt;
     $('specialBtn').disabled=GS.specialCD>0;
     $('dangerVig').style.opacity=GS.lives<=1?.55:GS.lives<=2?.22:0;
-    if(GS.upg.drone){const now=performance.now();if(now-lastDrone>260){lastDrone=now;const cy=GS.posY+sz*.4;GS.bullets.push({x:GS.posX-6,y:cy,vx:-40,vy:-620,w:3,h:12,col:'#a020f0',pierce:0,dmg:1});GS.bullets.push({x:GS.posX+sz+6,y:cy,vx:40,vy:-620,w:3,h:12,col:'#a020f0',pierce:0,dmg:1});}}
+    if(GS.upg.drone&&!isVs()){const now=performance.now();if(now-lastDrone>260){lastDrone=now;const cy=GS.posY+sz*.4;GS.bullets.push({x:GS.posX-6,y:cy,vx:-40,vy:-620,w:3,h:12,col:'#a020f0',pierce:0,dmg:1,owner:'solo'});GS.bullets.push({x:GS.posX+sz+6,y:cy,vx:40,vy:-620,w:3,h:12,col:'#a020f0',pierce:0,dmg:1,owner:'solo'});}}
 
     // ── TIMED ASSAULT: 60s wave, ramp every 10s, continuous spawn ──
     if(GS.assaultActive){
@@ -1695,48 +1878,40 @@ const Game={
         GS.rampTier=newRamp;
         Toast.show(`THREAT RAMP ${GS.rampTier+1}/6`,'pink');
         Flash.do('#ff6a00',.1);Engine.shake(6,120);AudioSys.boss();
-        // burst on ramp
         for(let k=0;k<2+GS.rampTier;k++) continuousSpawn();
       }
       GS.spawnCD-=dt;
       if(GS.spawnCD<=0){
         continuousSpawn();
-        GS.spawnCD=assaultPower().spawnMs;
+        GS.spawnCD=assaultPower().spawnMs*(isVs()?0.85:1);
       }
       UI.obj();
-      // VS score sync (~4 Hz)
-      if(GS.mode==='vs'&&typeof Online!=='undefined'&&Online.vsActive){
-        if(!this._vsSyncT) this._vsSyncT=0;
+      if(isVsHost()){
+        if(!this._vsSyncT)this._vsSyncT=0;
         this._vsSyncT+=dt;
-        if(this._vsSyncT>250){
+        if(this._vsSyncT>55){
           this._vsSyncT=0;
-          Online.syncState({score:GS.score,waveScore:GS.waveScore,lives:GS.lives,dead:false});
-          $('vsYouScore').textContent=GS.waveScore.toLocaleString();
-          $('vsOppScore').textContent=(Online.opp.waveScore||0).toLocaleString();
-          $('vsOppName').textContent=Online.opp.name||'OPP';
+          Online.sendWorld(packVsWorld());
+          updateVsHud();
         }
       }
-      // Objective complete early
-      if(GS.waveScore>=GS.waveGoal){
+      // Super Survival: no early objective end — fight full timer or KO
+      if(GS.waveScore>=GS.waveGoal&&!isVs()){
         GS.assaultActive=false;GS.waveState='idle';
         FloatText.add(Engine.W/2,Engine.H*.38,'OBJECTIVE CLEAR','#00ff9a',20);
         Toast.show('WAVE CLEAR · TARGET REACHED','ok');
         setTimeout(()=>{
           for(let i=GS.enemies.length-1;i>=0;i--){Particles.explosion(GS.enemies[i].x,GS.enemies[i].y,false);GS.enemies.splice(i,1);}
           GS.eBullets.length=0;UI.boss(false);GS.boss=null;
-          // VS: first wave clear ends the duel (single assault match)
-          if(GS.mode==='vs'){this.endVs(true);return;}
           if(GS.mode==='career'&&GS.targetWaves&&GS.wave>=GS.targetWaves){this.careerWin();return;}
           this.waveClear();
         },500);
         return;
       }
-      // Time up
       if(GS.waveTime<=0){
         GS.assaultActive=false;GS.waveTime=0;UI.obj();
-        if(GS.mode==='vs'){
-          // Duel ends on timer — highest waveScore wins
-          setTimeout(()=>this.endVs(GS.waveScore>=GS.waveGoal),500);
+        if(isVs()){
+          setTimeout(()=>this.endVs('timer'),400);
           return;
         }
         if(GS.waveScore>=GS.waveGoal){
@@ -1759,22 +1934,38 @@ const Game={
     for(let i=GS.enemies.length-1;i>=0;i--){
       const e=GS.enemies[i];moveEnemy(e,dt);
       if(e.y>Engine.H+40){if(e.isBoss){UI.boss(false);GS.boss=null;}GS.enemies.splice(i,1);continue;}
-      const pcx=GS.posX+sz/2,pcy=GS.posY+sz/2,dist=Math.hypot(pcx-(e.x+e.w/2),pcy-(e.y+e.h/2));
-      if(dist<sz*1.35&&dist>sz*.55&&!e._nm){e._nm=true;GS.nearMiss++;GS.styleMult=Math.min(2.5,GS.styleMult+.02);AudioSys.near();UI.mission();}
-      if(GS.invuln<=0&&aabb(GS.posX,GS.posY,sz,sz,e.x,e.y,e.w,e.h,6))this.playerHit(e,i);
+      // collide local
+      if(GS.invuln<=0&&aabb(GS.posX,GS.posY,sz,sz,e.x,e.y,e.w,e.h,6))this.playerHit(e,i,false);
+      // collide opp (VS host)
+      if(isVsHost()&&GS.opp&&!GS.opp.dead&&GS.opp.invuln<=0&&aabb(GS.opp.x,GS.opp.y,sz,sz,e.x,e.y,e.w,e.h,6)){
+        if(!e.isBoss){Particles.explosion(e.x+e.w/2,e.y+e.h/2,false);GS.enemies.splice(i,1);}
+        damageVsShip('opp',false);
+      }
     }
     for(let i=GS.bullets.length-1;i>=0;i--){
       const b=GS.bullets[i],s=dt/1000;b.x+=b.vx*s;b.y+=b.vy*s;
       if(Quality.trails&&Math.random()>.45)Particles.trail(b.x,b.y+b.h,b.col);
       if(b.y<-40||b.x<-30||b.x>Engine.W+30){GS.bullets.splice(i,1);continue;}
       let hit=false;
-      for(let j=GS.enemies.length-1;j>=0;j--){
-        const e=GS.enemies[j];
-        if(aabb(b.x-b.w/2,b.y,b.w,b.h,e.x,e.y,e.w,e.h,0)){
-          if(b.crit){GS.crits++;AudioSys.crit();FloatText.add(e.x+e.w/2,e.y,'CRIT','#ffd000',12);}else AudioSys.hit();
-          e.hp-=b.dmg;e.flash=80;Particles.emit(b.x,b.y,{n:4,spdMin:30,spdMax:90,colors:[b.col,'#fff'],lifeMin:.1,lifeMax:.25,rMin:1,rMax:3});
-          if(e.isBoss)UI.boss(true,e.hp,e.maxHp,e.phase,e.name);
-          if(e.hp<=0)killEnemy(e,j);if(b.pierce>0)b.pierce--;else{hit=true;break;}
+      // PvP: bullet hits rival ship
+      if(isVsHost()){
+        const owner=b.owner||'host';
+        if(owner==='host'&&GS.opp&&!GS.opp.dead&&GS.opp.invuln<=0&&aabb(b.x-b.w/2,b.y,b.w,b.h,GS.opp.x,GS.opp.y,sz,sz,2)){
+          damageVsShip('opp',true);hit=true;
+        } else if(owner==='guest'&&GS.invuln<=0&&aabb(b.x-b.w/2,b.y,b.w,b.h,GS.posX,GS.posY,sz,sz,2)){
+          damageVsShip('local',true);hit=true;
+        }
+      }
+      if(!hit){
+        for(let j=GS.enemies.length-1;j>=0;j--){
+          const e=GS.enemies[j];
+          if(aabb(b.x-b.w/2,b.y,b.w,b.h,e.x,e.y,e.w,e.h,0)){
+            if(b.crit){GS.crits++;AudioSys.crit();FloatText.add(e.x+e.w/2,e.y,'CRIT','#ffd000',12);}else AudioSys.hit();
+            e.hp-=b.dmg;e.flash=80;Particles.emit(b.x,b.y,{n:4,spdMin:30,spdMax:90,colors:[b.col,'#fff'],lifeMin:.1,lifeMax:.25,rMin:1,rMax:3});
+            if(e.isBoss)UI.boss(true,e.hp,e.maxHp,e.phase,e.name);
+            if(e.hp<=0) killEnemy(e,j,b.owner||'host');
+            if(b.pierce>0)b.pierce--;else{hit=true;break;}
+          }
         }
       }
       if(hit)GS.bullets.splice(i,1);
@@ -1782,9 +1973,8 @@ const Game={
     for(let i=GS.eBullets.length-1;i>=0;i--){
       const b=GS.eBullets[i],s=dt/1000;b.x+=b.vx*s;b.y+=b.vy*s;
       if(b.y>Engine.H+20||b.x<-20||b.x>Engine.W+20){GS.eBullets.splice(i,1);continue;}
-      const dist=Math.hypot(GS.posX+sz/2-b.x,GS.posY+sz/2-b.y);
-      if(dist<sz*.9&&dist>sz*.4&&!b._nm){b._nm=true;GS.nearMiss++;AudioSys.near();UI.mission();}
-      if(GS.invuln<=0&&aabb(GS.posX,GS.posY,sz,sz,b.x-b.r,b.y-b.r,b.r*2,b.r*2,4)){GS.eBullets.splice(i,1);this.playerDamage();}
+      if(GS.invuln<=0&&aabb(GS.posX,GS.posY,sz,sz,b.x-b.r,b.y-b.r,b.r*2,b.r*2,4)){GS.eBullets.splice(i,1);if(isVs())damageVsShip('local',false);else this.playerDamage();continue;}
+      if(isVsHost()&&GS.opp&&!GS.opp.dead&&GS.opp.invuln<=0&&aabb(GS.opp.x,GS.opp.y,sz,sz,b.x-b.r,b.y-b.r,b.r*2,b.r*2,4)){GS.eBullets.splice(i,1);damageVsShip('opp',false);}
     }
     for(let i=GS.drops.length-1;i>=0;i--){
       const d=GS.drops[i];d.y+=.8*(dt/16);d.bob+=dt*.008;
@@ -1794,12 +1984,66 @@ const Game={
     }
     Particles.update(dt);FloatText.update(dt);Flash.update(dt);
   },
+  updateVsGuest(dt){
+    const sz=GS.size=playerSize(),bon=shipBonus();
+    GS.posY=Engine.H-Engine.H*.2-sz;
+    const spd=.32*dt*GS.upg.moveSpd*bon.spd*(GS.temp.speed>0?1.55:1)/Math.max(.7,shipData().move||1);
+    if(Input.left)GS.posX=Math.max(8,GS.posX-spd);
+    if(Input.right)GS.posX=Math.min(Engine.W-sz-8,GS.posX+spd);
+    if(GS.invuln>0)GS.invuln-=dt;
+    if(GS.specialCD>0)GS.specialCD-=dt;
+    $('specialBtn').disabled=GS.specialCD>0;
+    $('dangerVig').style.opacity=GS.lives<=1?.55:GS.lives<=2?.22:0;
+    // send input ~20Hz
+    if(!this._inAcc)this._inAcc=0;this._inAcc+=dt;
+    if(this._inAcc>50){
+      this._inAcc=0;
+      const special=!!Input.special;if(Input.special)Input.special=false;
+      Online.sendInput({L:Input.left,R:Input.right,shoot:Input.shoot,special,x:GS.posX|0,y:GS.posY|0});
+    }
+    if(Online.lastWorld) applyVsWorld(Online.lastWorld);
+    // local visual shoot prediction (host will authoritative overwrite)
+    if(Input.shoot&&GS.lives>0){/* host fires; optional muzzle flash */ if(Math.random()>.92)Particles.emit(GS.posX+sz/2,GS.posY,{n:2,spdMin:20,spdMax:60,colors:['#ff2d9b','#fff'],lifeMin:.05,lifeMax:.15,rMin:1,rMax:2});}
+    if(GS.assaultActive){UI.obj();updateVsHud();}
+    if(GS.opp&&GS.opp.invuln>0)GS.opp.invuln-=dt;
+  },
+  vsNova(who){
+    if(GS.specialCD>0&&who==='local')return;
+    if(who==='local'){GS.specialCD=GS.specialMax;AudioSys.special();haptic([18,35,18]);Engine.shake(12,200);}
+    const ship=who==='local'?{x:GS.posX,y:GS.posY,size:GS.size}:GS.opp;
+    if(!ship)return;
+    const cx=ship.x+ship.size/2,cy=ship.y+ship.size/2;
+    const dmg=2;
+    for(let i=GS.enemies.length-1;i>=0;i--){
+      const e=GS.enemies[i];const dist=Math.hypot(cx-(e.x+e.w/2),cy-(e.y+e.h/2));
+      if(dist<140){e.hp-=dmg;Particles.explosion(e.x+e.w/2,e.y+e.h/2,false);if(e.hp<=0)killEnemy(e,i);}
+    }
+    // PvP nova tick
+    if(isVsHost()){
+      if(who==='local'&&GS.opp&&!GS.opp.dead){
+        const dist=Math.hypot(cx-(GS.opp.x+GS.opp.size/2),cy-(GS.opp.y+GS.opp.size/2));
+        if(dist<130) damageVsShip('opp',true);
+      }
+      if(who==='opp'&&GS.invuln<=0){
+        const dist=Math.hypot(cx-(GS.posX+GS.size/2),cy-(GS.posY+GS.size/2));
+        if(dist<130) damageVsShip('local',true);
+      }
+    }
+    FloatText.add(cx,cy-30,'NOVA',who==='local'?'#a020f0':'#ff2d9b',16);
+  },
   playerHit(e,i){
+    if(isVs()){
+      if(GS.upg.shieldOn){GS.upg.shieldOn=false;UI.pwr();if(!e.isBoss)GS.enemies.splice(i,1);GS.invuln=400;return;}
+      if(!e.isBoss){Particles.explosion(e.x+e.w/2,e.y+e.h/2,false);GS.enemies.splice(i,1);}
+      damageVsShip('local',false);
+      return;
+    }
     if(GS.upg.shieldOn){GS.upg.shieldOn=false;UI.pwr();Particles.explosion(e.x+e.w/2,e.y+e.h/2,false);if(!e.isBoss)GS.enemies.splice(i,1);else{e.hp-=2;UI.boss(true,e.hp,e.maxHp,e.phase,e.name);if(e.hp<=0)killEnemy(e,i);}FloatText.add(GS.posX,GS.posY-20,'SHIELD','#00e8ff',13);Flash.do('#00e8ff',.15);Engine.shake(8,100);GS.invuln=400;return;}
     if(!e.isBoss){Particles.explosion(e.x+e.w/2,e.y+e.h/2,false);GS.enemies.splice(i,1);}
     this.playerDamage();
   },
   playerDamage(){
+    if(isVs()){damageVsShip('local',false);return;}
     GS.lives--;GS.damageTaken++;GS.waveDamage++;UI.lives();AudioSys.hurt();haptic([28,45,28]);Engine.shake(16,260);Engine.doHitstop(90);Flash.do('#ff0033',.26);
     GS.invuln=hasPerk('hardened')?2100:1500;
     Particles.emit(GS.posX+GS.size/2,GS.posY+GS.size/2,{n:20,spdMin:40,spdMax:180,colors:['#ff3b5c','#ff2d9b','#fff']});
@@ -1846,13 +2090,12 @@ const Game={
     GS.waveState='active';
     GS.enemies=[];GS.eBullets=[];GS.formations={};
     UI.obj();
-    // VS HUD
+    // VS Super Survival HUD + arena
     if(GS.mode==='vs'&&typeof Online!=='undefined'){
       Online.vsActive=true;
+      if(!GS.opp) initVsArena();
       $('vsHud').style.display='block';
-      $('vsOppName').textContent=Online.opp.name||'OPP';
-      $('vsYouScore').textContent='0';
-      $('vsOppScore').textContent='0';
+      updateVsHud();
     } else {
       $('vsHud').style.display='none';
     }
@@ -1926,42 +2169,85 @@ const Game={
     });
     if(GS.waveState==='active'||GS.waveState==='announce'){
       const inv=GS.invuln>0&&Math.floor(GS.invuln/80)%2===0;
-      if(!inv){
+      if(!inv&&GS.lives>0){
         if(GS.upg.shieldOn){ctx.strokeStyle='#00e8ff';ctx.lineWidth=2;ctx.shadowColor='#00e8ff';ctx.shadowBlur=14;ctx.globalAlpha=.55;ctx.beginPath();ctx.arc(GS.posX+GS.size/2+ox,GS.posY+GS.size/2+oy,GS.size*.7,0,TAU);ctx.stroke();ctx.globalAlpha=1;ctx.shadowBlur=0;}
         if(Math.random()>.5)Particles.emit(GS.posX+GS.size/2,GS.posY+GS.size*.9,{n:1,spdMin:15,spdMax:45,angle:Math.PI/2,spread:.4,colors:[shipData().color,'#0088ff'],lifeMin:.12,lifeMax:.28,rMin:1,rMax:2.5});
         const pSpr=Sprites.playerFrame(Meta.ship,performance.now());
         ctx.drawImage(pSpr,GS.posX+ox,GS.posY+oy,GS.size,GS.size);
-        if(GS.upg.drone){const t=performance.now()*.005;[[-22,Math.sin(t)*4],[GS.size+6,Math.cos(t)*4]].forEach(([dx,dy])=>{ctx.shadowColor='#a020f0';ctx.shadowBlur=10;ctx.fillStyle='#2a1050';ctx.beginPath();ctx.arc(GS.posX+dx+ox,GS.posY+GS.size*.4+dy+oy,7,0,TAU);ctx.fill();ctx.strokeStyle='#9d00ff';ctx.lineWidth=1.5;ctx.stroke();
-          // mini thruster
+        // YOU tag in VS
+        if(isVs()){
+          ctx.font='bold 10px Orbitron,sans-serif';ctx.textAlign='center';ctx.fillStyle='#00e8ff';
+          ctx.fillText('YOU',GS.posX+GS.size/2+ox,GS.posY-6+oy);
+        }
+        if(GS.upg.drone&&!isVs()){const t=performance.now()*.005;[[-22,Math.sin(t)*4],[GS.size+6,Math.cos(t)*4]].forEach(([dx,dy])=>{ctx.shadowColor='#a020f0';ctx.shadowBlur=10;ctx.fillStyle='#2a1050';ctx.beginPath();ctx.arc(GS.posX+dx+ox,GS.posY+GS.size*.4+dy+oy,7,0,TAU);ctx.fill();ctx.strokeStyle='#9d00ff';ctx.lineWidth=1.5;ctx.stroke();
           ctx.fillStyle='#c080ff';ctx.globalAlpha=.6;ctx.beginPath();ctx.arc(GS.posX+dx+ox,GS.posY+GS.size*.4+dy+6+oy,3,0,TAU);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;});}
+      }
+      // Second pilot (opponent) on shared arena
+      if(isVs()&&GS.opp&&!GS.opp.dead&&GS.opp.lives>0){
+        const o=GS.opp;const osz=o.size||GS.size;
+        const oinv=o.invuln>0&&Math.floor(o.invuln/80)%2===0;
+        if(!oinv){
+          ctx.save();
+          // magenta tint ring
+          ctx.strokeStyle='rgba(255,45,155,.75)';ctx.lineWidth=2;ctx.shadowColor='#ff2d9b';ctx.shadowBlur=12;
+          ctx.beginPath();ctx.arc(o.x+osz/2+ox,o.y+osz/2+oy,osz*.55,0,TAU);ctx.stroke();ctx.shadowBlur=0;
+          const oSpr=Sprites.playerFrame(o.shipId||Meta.ship,performance.now()+500);
+          ctx.globalAlpha=.95;
+          ctx.drawImage(oSpr,o.x+ox,o.y+oy,osz,osz);
+          ctx.globalAlpha=1;
+          ctx.font='bold 10px Orbitron,sans-serif';ctx.textAlign='center';ctx.fillStyle='#ff2d9b';
+          ctx.fillText((o.name||'OPP').slice(0,8),o.x+osz/2+ox,o.y-6+oy);
+          ctx.restore();
+        }
       }
     }
     Particles.render(ctx,ox,oy);FloatText.render(ctx,ox,oy);Flash.render(ctx);
     const fxc=Engine.fxc;fxc.setTransform(Engine.dpr,0,0,Engine.dpr,0,0);fxc.clearRect(0,0,Engine.W,Engine.H);
     if(Quality.bloom&&GS.bullets.length){fxc.globalCompositeOperation='lighter';GS.bullets.forEach(b=>{fxc.fillStyle=b.col;fxc.globalAlpha=.12;fxc.beginPath();fxc.arc(b.x+ox,b.y+b.h/2+oy,12,0,TAU);fxc.fill();});fxc.globalAlpha=1;fxc.globalCompositeOperation='source-over';}
   },
-  endVs(clearedObj){
-    // Compare wave scores
-    const mine=GS.waveScore|0;
-    const theirs=(typeof Online!=='undefined'?Online.opp.waveScore:0)|0;
+  endVs(reason){
+    if(GS.vsEnded)return;GS.vsEnded=true;
+    const mineK=GS.kills|0;
+    const theirK=(GS.opp&&GS.opp.kills)|0;
+    const mineL=GS.lives|0;
+    const theirL=(GS.opp&&GS.opp.lives)|0;
+    const mineS=GS.waveScore|0;
+    const theirS=(GS.opp&&GS.opp.waveScore)|0;
+    let result='DRAW', win=false;
+    if(reason==='ko_win'){result='KO WIN';win=true;}
+    else if(reason==='ko_lose'){result='KO LOSE';win=false;}
+    else if(reason==='disconnect'){result='OPP LEFT · WIN';win=true;}
+    else {
+      // timer / survival: kills → pvp → lives → score
+      const mineP=GS.pvpHits|0, theirP=(GS.opp&&GS.opp.pvpHits)|0;
+      if(mineK>theirK){result='SURVIVAL WIN';win=true;}
+      else if(theirK>mineK){result='SURVIVAL LOSE';win=false;}
+      else if(mineP>theirP){result='SURVIVAL WIN';win=true;}
+      else if(theirP>mineP){result='SURVIVAL LOSE';win=false;}
+      else if(mineL>theirL){result='SURVIVAL WIN';win=true;}
+      else if(theirL>mineL){result='SURVIVAL LOSE';win=false;}
+      else if(mineS>theirS){result='SURVIVAL WIN';win=true;}
+      else if(theirS>mineS){result='SURVIVAL LOSE';win=false;}
+      else {result='DRAW';win=true;}
+    }
     if(typeof Online!=='undefined'){
-      Online.sendEnd({score:GS.score,waveScore:GS.waveScore});
+      if(isVsHost()){
+        Online.sendEvt({kind:'end', result: win?'YOU LOSE':'YOU WIN', reason, kills:theirK, myKills:mineK});
+        Online.sendEnd({score:GS.score,waveScore:GS.waveScore,kills:mineK,pvpHits:GS.pvpHits|0,result});
+        Online.sendWorld(packVsWorld());
+      }
       Online.vsActive=false;
     }
     $('vsHud').style.display='none';
-    let result='DRAW';
-    if(mine>theirs) result='YOU WIN';
-    else if(theirs>mine) result='YOU LOSE';
-    FloatText.add(Engine.W/2,Engine.H*.36,result,mine>=theirs?'#00ff9a':'#ff3b5c',24);
-    Toast.show(`${result} · ${mine} vs ${theirs}`, mine>=theirs?'ok':'pink');
-    // Still run end pipeline for rewards/board
-    this.end(mine>=theirs, {vs:true, result, mine, theirs, clearedObj});
+    FloatText.add(Engine.W/2,Engine.H*.34,result,win?'#00ff9a':'#ff3b5c',22);
+    Toast.show(`${result} · K ${mineK}-${theirK} · ❤ ${mineL}-${theirL}`, win?'ok':'pink');
+    this.end(win, {vs:true, result, mine:mineK, theirs:theirK, reason});
   },
   start(opts={}){
     const sh=shipData(),bon=shipBonus();
     const d=opts.diff||$('setDiff').value||'normal';
     const theme=opts.theme!=null?opts.theme:0;
-    // Fair VS seed
+    // Fair VS seed (host world still authoritative for combat)
     if(opts.seed!=null) seedRandom(opts.seed|0);
     Object.assign(GS,{
       score:0,wave:1,lives:3+(sh.life||0)+bon.lifeBonus,combo:0,comboT:0,maxCombo:0,
@@ -1972,15 +2258,18 @@ const Game={
       waveTime:WAVE_DURATION,waveGoal:5000,waveScore:0,rampTier:0,spawnCD:200,bossSpawned:false,assaultActive:false,
       upg:{fireRate:140,triple:false,spread:false,shield:!!sh.shield||bon.shieldBonus,shieldOn:!!sh.shield||bon.shieldBonus,bulletSpd:1,moveSpd:1,scoreMult:1,piercing:false,drone:false,nova:!!sh.nova,magnet:false,crit:0},
       upgCounts:{},temp:{triple:0,speed:0},enemies:[],bullets:[],eBullets:[],drops:[],formations:{},boss:null,styleMult:1,
-      mission:{...pick(MISSIONS_RUN),_paid:false}
+      mission:{...pick(MISSIONS_RUN),_paid:false},
+      opp:null,pvpHits:0,vsEnded:false,_nid:1
     });
     GS.posX=Engine.W/2-playerSize()/2;GS.size=playerSize();
+    if(GS.mode==='vs') initVsArena();
     Particles.pool.clear();FloatText.clear();BG.set(theme);
     GS.waveGoal=waveGoalFor(1);
+    // VS: higher pressure shared wave
+    if(GS.mode==='vs') GS.waveGoal=Math.round(GS.waveGoal*1.35);
     UI.score();UI.wave();UI.lives();UI.pwr();UI.boss(false);UI.combo();UI.mission();UI.obj();
     hideAllMenus();UI.gameUI(true);$('dangerVig').style.opacity=0;
     AudioSys.startMusic();Engine.start();
-    // Skip tutorial in VS matches
     if(!Meta.tutDone&&GS.mode!=='vs')setTimeout(()=>Tutorial.start(),300);
     else if(typeof Engine!=='undefined') Engine.paused=false;
     UI.announceWave(1,GS.mode==='vs',()=>this.beginAssault());
@@ -2011,7 +2300,7 @@ const Game={
     }
     if(GS.isDaily) Daily.check(GS);
     if(GS.mode==='event'){mc=Math.round(mc*1.4);nc+=3;}
-    if(GS.mode==='vs'){mc=Math.round(mc*1.25);xp=Math.round(xp*1.25);if(extra&&extra.result==='YOU WIN'){mc+=80;nc+=3;}}
+    if(GS.mode==='vs'){mc=Math.round(mc*1.35);xp=Math.round(xp*1.35);if(extra&&extra.vs&&extra.result&&extra.result.indexOf('WIN')>=0){mc+=100;nc+=4;}}
 
     Meta.mc+=mc;Meta.nc+=nc;Meta.addXP(xp);
     Meta.life.kills+=GS.kills;Meta.life.bosses+=GS.bossesKilled;Meta.life.runs++;
@@ -2029,8 +2318,8 @@ const Game={
     $('goStars').textContent='★'.repeat(stars)+'☆'.repeat(5-stars);
     $('finalScore').textContent=GS.score.toLocaleString()+(isHS?' ★':'');
     $('finalWave').textContent=GS.wave;
-    let modeLbl=GS.mode==='career'?'CAREER':GS.mode==='daily'?'DAILY':GS.mode==='event'?'EVENT':GS.mode==='vs'?'VS 1v1':'ENDLESS';
-    if(extra&&extra.vs) modeLbl=`VS · ${extra.result} (${extra.mine}–${extra.theirs})`;
+    let modeLbl=GS.mode==='career'?'CAREER':GS.mode==='daily'?'DAILY':GS.mode==='event'?'EVENT':GS.mode==='vs'?'SUPER SURVIVAL':'ENDLESS';
+    if(extra&&extra.vs) modeLbl=`⚔ ${extra.result} · K ${extra.mine}–${extra.theirs}`;
     $('finalMode').textContent=(victory?'CLEAR · ':'')+modeLbl+' · '+diffMul().label;
     $('goRewards').innerHTML=`+${mc} MC · +${nc} NC · +${xp} XP${achMC?` · +${achMC} medals`:''}`;
     $('goStats').innerHTML=`<div>KILLS <b>${GS.kills}</b></div><div>ELITES <b>${GS.eliteKills}</b></div><div>BOSSES <b>${GS.bossesKilled}</b></div><div>COMBO <b>${GS.maxCombo}</b></div><div>NEAR <b>${GS.nearMiss}</b></div><div>CRITS <b>${GS.crits}</b></div><div>WAVE OBJ <b>${GS.waveScore}</b></div><div>STYLE <b>×${GS.styleMult.toFixed(2)}</b></div>`;
@@ -2404,7 +2693,42 @@ function wireUI(){
   $('modeVs').onclick=()=>showPage('pageVs','home');
   $('modeRank').onclick=()=>showPage('pageRank','social');
 
-  // VS lobby
+  // VS Super Survival lobby
+  function wireVsNet(){
+    Online.onConnect=()=>{updateVsStatus();Toast.show('OPPONENT JOINED','ok');};
+    Online.onLobby=()=>updateVsStatus();
+    Online.onStart=({seed,diff})=>{
+      hideAllMenus();
+      Game.start({mode:'vs',diff:diff||$('vsDiff').value,seed});
+    };
+    Online.onWorld=(w)=>{applyVsWorld(w);};
+    Online.onEvt=(msg)=>{
+      if(msg.kind==='end'&&isVsGuest()&&!GS.vsEnded){
+        // Host reports their result; invert for guest perspective on KO
+        if(msg.reason==='ko_win') Game.endVs('ko_lose');
+        else if(msg.reason==='ko_lose') Game.endVs('ko_win');
+        else {
+          // timer: recompute from last world snapshot
+          if(Online.lastWorld&&Online.lastWorld.me&&Online.lastWorld.you){
+            GS.kills=Online.lastWorld.you.kills|0;
+            GS.lives=Online.lastWorld.you.lives|0;
+            GS.waveScore=Online.lastWorld.you.waveScore|0;
+            if(GS.opp){
+              GS.opp.kills=Online.lastWorld.me.kills|0;
+              GS.opp.lives=Online.lastWorld.me.lives|0;
+              GS.opp.waveScore=Online.lastWorld.me.waveScore|0;
+            }
+          }
+          Game.endVs('timer');
+        }
+      }
+    };
+    Online.onSync=()=>updateVsHud();
+    Online.onDisconnect=()=>{
+      updateVsStatus();
+      if(GS.mode==='vs'&&Online.vsActive&&!GS.vsEnded) Game.endVs('disconnect');
+    };
+  }
   $('vsHostBtn').onclick=async()=>{
     try{
       $('vsStatus').textContent='Creating room…';
@@ -2412,14 +2736,7 @@ function wireUI(){
       $('vsCodeBox').textContent=code.split('').join(' ');
       Toast.show('ROOM '+code,'ok');
       updateVsStatus();
-      Online.onConnect=()=>{updateVsStatus();Toast.show('OPPONENT JOINED','ok');};
-      Online.onLobby=()=>updateVsStatus();
-      Online.onStart=({seed,diff})=>{
-        showHome();hideAllMenus();
-        Game.start({mode:'vs',diff:diff||$('vsDiff').value,seed});
-      };
-      Online.onSync=()=>{if($('vsOppScore'))$('vsOppScore').textContent=(Online.opp.waveScore||0).toLocaleString();};
-      Online.onDisconnect=()=>updateVsStatus();
+      wireVsNet();
     }catch(e){Toast.show('HOST FAILED','pink');$('vsStatus').textContent=String(e.message||e);}
   };
   $('vsJoinBtn').onclick=async()=>{
@@ -2430,13 +2747,7 @@ function wireUI(){
       await Online.joinRoom(code);
       Toast.show('JOINED '+Online.roomCode,'ok');
       updateVsStatus();
-      Online.onLobby=()=>updateVsStatus();
-      Online.onStart=({seed,diff})=>{
-        hideAllMenus();
-        Game.start({mode:'vs',diff:diff||$('vsDiff').value,seed});
-      };
-      Online.onSync=()=>{if($('vsOppScore'))$('vsOppScore').textContent=(Online.opp.waveScore||0).toLocaleString();};
-      Online.onDisconnect=()=>updateVsStatus();
+      wireVsNet();
     }catch(e){Toast.show('JOIN FAILED','pink');$('vsStatus').textContent=String(e.message||e);}
   };
   $('vsReadyBtn').onclick=()=>{

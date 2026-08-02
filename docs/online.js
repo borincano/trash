@@ -227,11 +227,19 @@
     roomCode: null,
     ready: false,
     vsActive: false,
-    opp: { name: 'OPP', score: 0, waveScore: 0, lives: 3, ready: false, dead: false },
+    // Super Survival: shared arena PvP+PvE
+    vsMode: 'survival',
+    opp: { name: 'OPP', score: 0, waveScore: 0, lives: 3, kills: 0, ready: false, dead: false },
     meReady: false,
     onMsg: null,
     status: 'idle',
     lastRemoteError: null,
+    // netcode buffers
+    lastGuestInput: { L: 0, R: 0, shoot: 0, special: 0, x: 0, y: 0, seq: 0 },
+    lastWorld: null,
+    inputSeq: 0,
+    _inputAcc: 0,
+    _worldAcc: 0,
 
     /* ───────── GLOBAL LEADERBOARD (Firestore galaxymuzz) ───────── */
     async fetchTop(limit) {
@@ -436,14 +444,48 @@
           if (this.role === 'host' && this.meReady && this.opp.ready) {
             const seed = (Math.random() * 1e9) | 0;
             const diff = msg.diff || 'hard';
-            this.send({ t: 'start', seed, diff });
-            if (this.onStart) this.onStart({ seed, diff });
+            this.send({ t: 'start', seed, diff, mode: 'survival' });
+            if (this.onStart) this.onStart({ seed, diff, mode: 'survival' });
           }
           break;
         case 'start':
-          if (this.onStart) this.onStart({ seed: msg.seed, diff: msg.diff || 'hard' });
+          if (this.onStart) this.onStart({ seed: msg.seed, diff: msg.diff || 'hard', mode: msg.mode || 'survival' });
+          break;
+        case 'input':
+          // Host receives guest controls
+          if (this.role === 'host') {
+            this.lastGuestInput = {
+              L: !!msg.L,
+              R: !!msg.R,
+              shoot: !!msg.shoot,
+              special: !!msg.special,
+              x: +msg.x || 0,
+              y: +msg.y || 0,
+              seq: msg.seq | 0,
+            };
+            if (this.onInput) this.onInput(this.lastGuestInput);
+          }
+          break;
+        case 'world':
+          // Guest receives authoritative arena
+          if (this.role === 'guest') {
+            this.lastWorld = msg;
+            if (msg.me) {
+              this.opp.score = msg.me.score | 0;
+              this.opp.waveScore = msg.me.waveScore | 0;
+              this.opp.lives = msg.me.lives | 0;
+              this.opp.kills = msg.me.kills | 0;
+              this.opp.dead = !!msg.me.dead;
+              this.opp.name = msg.me.name || this.opp.name;
+            }
+            if (this.onWorld) this.onWorld(msg);
+          }
+          break;
+        case 'evt':
+          if (this.onEvt) this.onEvt(msg);
           break;
         case 'sync':
+          // legacy thin sync (keep for safety)
           this.opp.score = msg.score | 0;
           this.opp.waveScore = msg.waveScore | 0;
           this.opp.lives = msg.lives | 0;
@@ -453,6 +495,7 @@
         case 'end':
           this.opp.score = msg.score | 0;
           this.opp.waveScore = msg.waveScore | 0;
+          this.opp.kills = msg.kills | 0;
           this.opp.dead = true;
           if (this.onOppEnd) this.onOppEnd(msg);
           break;
@@ -475,9 +518,36 @@
       this.send({ t: 'ready', diff: diff || 'hard', name: this.myName() });
       if (this.role === 'host' && this.opp.ready) {
         const seed = (Math.random() * 1e9) | 0;
-        this.send({ t: 'start', seed, diff: diff || 'hard' });
-        if (this.onStart) this.onStart({ seed, diff: diff || 'hard' });
+        this.send({ t: 'start', seed, diff: diff || 'hard', mode: 'survival' });
+        if (this.onStart) this.onStart({ seed, diff: diff || 'hard', mode: 'survival' });
       }
+    },
+
+    /** Guest → Host controls (~20 Hz) */
+    sendInput(input) {
+      if (!this.vsActive || this.role !== 'guest') return;
+      this.inputSeq = (this.inputSeq + 1) | 0;
+      this.send({
+        t: 'input',
+        L: !!input.L,
+        R: !!input.R,
+        shoot: !!input.shoot,
+        special: !!input.special,
+        x: input.x | 0,
+        y: input.y | 0,
+        seq: this.inputSeq,
+      });
+    },
+
+    /** Host → Guest full arena snapshot (~15–20 Hz) */
+    sendWorld(world) {
+      if (!this.vsActive || this.role !== 'host') return;
+      this.send(Object.assign({ t: 'world' }, world));
+    },
+
+    sendEvt(evt) {
+      if (!this.vsActive) return;
+      this.send(Object.assign({ t: 'evt' }, evt));
     },
 
     syncState(state) {
@@ -492,7 +562,15 @@
     },
 
     sendEnd(state) {
-      this.send({ t: 'end', score: state.score | 0, waveScore: state.waveScore | 0, name: this.myName() });
+      this.send({
+        t: 'end',
+        score: state.score | 0,
+        waveScore: state.waveScore | 0,
+        kills: state.kills | 0,
+        pvpHits: state.pvpHits | 0,
+        name: this.myName(),
+        result: state.result || '',
+      });
     },
 
     destroyPeer() {
@@ -507,6 +585,8 @@
       this.vsActive = false;
       this.status = 'idle';
       this.meReady = false;
+      this.lastWorld = null;
+      this.lastGuestInput = { L: 0, R: 0, shoot: 0, special: 0, x: 0, y: 0, seq: 0 };
     },
   };
 
