@@ -374,6 +374,17 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
         <div class="mc-t">EVENT</div>
         <div class="mc-d">Nightmare rush · high rewards</div>
       </div>
+      <div class="mode-card" id="modeVs">
+        <div class="mc-badge">ONLINE</div>
+        <div class="mc-ico">⚔</div>
+        <div class="mc-t">VS 1v1</div>
+        <div class="mc-d">2 players · same time · internet</div>
+      </div>
+      <div class="mode-card" id="modeRank">
+        <div class="mc-ico">🌐</div>
+        <div class="mc-t">GLOBAL RANK</div>
+        <div class="mc-d">Worldwide scoreboard</div>
+      </div>
     </div>
 
     <div class="section-h"><h3>DAILY REWARDS</h3><span id="loginStreak">Day 1</span></div>
@@ -427,11 +438,54 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div class="page-body">
     <div class="section-h"><h3>CALLSIGN</h3></div>
     <input class="input" id="callsignInput" maxlength="12" style="margin-bottom:12px;letter-spacing:.1em">
-    <div class="section-h"><h3>LEADERBOARD</h3><span>Local</span></div>
+    <div class="section-h"><h3>LOCAL BOARD</h3><span>This device</span></div>
     <div id="lbList"></div>
     <div class="section-h" style="margin-top:14px"><h3>MEDALS</h3><span id="achCount">0/20</span></div>
     <div class="bar-track" style="height:6px;margin-bottom:10px"><i id="achFill" style="width:0"></i></div>
     <div id="achList"></div>
+  </div>
+</div>
+
+<!-- GLOBAL RANK -->
+<div class="page" id="pageRank">
+  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>GLOBAL RANK</h2></div>
+  <div class="page-body">
+    <div class="section-h"><h3>WORLD TOP</h3><button class="btn sm cyan" id="rankRefresh" type="button">REFRESH</button></div>
+    <div class="chip" id="rankStatus" style="margin-bottom:10px">Loading…</div>
+    <div id="globalList"></div>
+    <div class="section-h" style="margin-top:16px"><h3>ONLINE BACKEND (OPTIONAL)</h3></div>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:8px;line-height:1.45">
+      Paste a free Firebase / Worker scores URL for true global sync. Without it, ranks merge this device + any posted remote when configured.
+    </p>
+    <input class="input" id="lbUrlInput" placeholder="https://YOUR.firebaseio.com/scores.json" style="margin-bottom:8px;letter-spacing:.04em;font-size:.75rem;text-align:left">
+    <input class="input" id="lbKeyInput" placeholder="API key (optional)" style="margin-bottom:8px;letter-spacing:.04em;font-size:.75rem;text-align:left" type="password">
+    <button class="btn cyan" id="lbSaveCfg" type="button" style="width:100%">SAVE ONLINE CONFIG</button>
+  </div>
+</div>
+
+<!-- VS LOBBY -->
+<div class="page" id="pageVs">
+  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>VS 1v1 ONLINE</h2></div>
+  <div class="page-body">
+    <p style="font-size:.9rem;color:var(--muted);line-height:1.5;margin-bottom:12px">
+      Two pilots, same 60s assault, same seed. Highest <b style="color:var(--c)">wave objective score</b> wins. Needs internet (WebRTC).
+    </p>
+    <div class="section-h"><h3>YOUR CALLSIGN</h3><span id="vsName">PILOT</span></div>
+    <div class="set-row"><span>DIFFICULTY</span>
+      <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
+    </div>
+    <div class="btn-row" style="margin:12px 0">
+      <button class="btn cyan" id="vsHostBtn" type="button" style="flex:1">HOST ROOM</button>
+    </div>
+    <div class="section-h"><h3>ROOM CODE</h3></div>
+    <div id="vsCodeBox" style="font-family:Orbitron,sans-serif;font-size:1.6rem;letter-spacing:.25em;text-align:center;color:var(--y);padding:12px;border:1px solid rgba(255,208,0,.35);border-radius:12px;margin-bottom:12px;min-height:52px">— — — — —</div>
+    <div class="section-h"><h3>JOIN FRIEND</h3></div>
+    <input class="input" id="vsJoinInput" maxlength="6" placeholder="ENTER CODE" style="margin-bottom:8px;letter-spacing:.2em">
+    <button class="btn pink" id="vsJoinBtn" type="button" style="width:100%;margin-bottom:12px">JOIN ROOM</button>
+    <div class="chip" id="vsStatus">Idle · create or join a room</div>
+    <div id="vsLobbyInfo" style="margin-top:12px;font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,232,255,.7);line-height:1.6"></div>
+    <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-top:12px" disabled>READY · START</button>
+    <button class="btn grey" id="vsCancelBtn" type="button" style="width:100%;margin-top:8px">DISCONNECT</button>
   </div>
 </div>
 
@@ -474,6 +528,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <div class="obj-track"><div id="objFill"></div></div>
     <div class="obj-meta"><span id="objWaveLbl">WAVE 1 · 60s ASSAULT</span><span class="ramp" id="objRamp">RAMP 1/6</span></div>
   </div>
+  <div id="vsHud" style="display:none;position:absolute;top:calc(118px + var(--safe-t));left:50%;transform:translateX(-50%);z-index:46;pointer-events:none;width:min(340px,90vw);text-align:center;font-family:'Share Tech Mono',monospace;font-size:.58rem;letter-spacing:.06em;color:rgba(255,45,155,.9);background:rgba(0,0,0,.45);border:1px solid rgba(255,45,155,.4);padding:4px 8px;border-radius:8px">
+    VS · YOU <b id="vsYouScore" style="color:var(--c)">0</b> — <b id="vsOppName" style="color:var(--m)">OPP</b> <b id="vsOppScore" style="color:var(--y)">0</b>
+  </div>
   <div id="missionBar"></div>
   <div id="bossBar"><div class="boss-lbl" id="bossLbl">THREAT</div><div class="boss-track"><div id="bossFill"></div></div></div>
   <div id="combo"><span id="comboVal">2x</span><span class="cm">COMBO</span></div>
@@ -514,6 +571,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 
 <div id="fpsBadge"></div>
 
+<!-- Online multiplayer + global ranks -->
+<script src="online.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -1641,16 +1700,28 @@ const Game={
         GS.spawnCD=assaultPower().spawnMs;
       }
       UI.obj();
-      // Objective complete early (still must survive? user wants score within 60s - allow early clear)
+      // VS score sync (~4 Hz)
+      if(GS.mode==='vs'&&typeof Online!=='undefined'&&Online.vsActive){
+        if(!this._vsSyncT) this._vsSyncT=0;
+        this._vsSyncT+=dt;
+        if(this._vsSyncT>250){
+          this._vsSyncT=0;
+          Online.syncState({score:GS.score,waveScore:GS.waveScore,lives:GS.lives,dead:false});
+          $('vsYouScore').textContent=GS.waveScore.toLocaleString();
+          $('vsOppScore').textContent=(Online.opp.waveScore||0).toLocaleString();
+          $('vsOppName').textContent=Online.opp.name||'OPP';
+        }
+      }
+      // Objective complete early
       if(GS.waveScore>=GS.waveGoal){
         GS.assaultActive=false;GS.waveState='idle';
         FloatText.add(Engine.W/2,Engine.H*.38,'OBJECTIVE CLEAR','#00ff9a',20);
         Toast.show('WAVE CLEAR · TARGET REACHED','ok');
-        // clear remaining for clean upgrade screen
         setTimeout(()=>{
-          GS.enemies.forEach(e=>{}); // leave them or purge
           for(let i=GS.enemies.length-1;i>=0;i--){Particles.explosion(GS.enemies[i].x,GS.enemies[i].y,false);GS.enemies.splice(i,1);}
           GS.eBullets.length=0;UI.boss(false);GS.boss=null;
+          // VS: first wave clear ends the duel (single assault match)
+          if(GS.mode==='vs'){this.endVs(true);return;}
           if(GS.mode==='career'&&GS.targetWaves&&GS.wave>=GS.targetWaves){this.careerWin();return;}
           this.waveClear();
         },500);
@@ -1659,6 +1730,11 @@ const Game={
       // Time up
       if(GS.waveTime<=0){
         GS.assaultActive=false;GS.waveTime=0;UI.obj();
+        if(GS.mode==='vs'){
+          // Duel ends on timer — highest waveScore wins
+          setTimeout(()=>this.endVs(GS.waveScore>=GS.waveGoal),500);
+          return;
+        }
         if(GS.waveScore>=GS.waveGoal){
           GS.waveState='idle';
           setTimeout(()=>{
@@ -1668,7 +1744,6 @@ const Game={
             this.waveClear();
           },400);
         } else {
-          // FAILED objective — extreme mode: mission fail
           FloatText.add(Engine.W/2,Engine.H*.4,'OBJECTIVE FAILED','#ff3b5c',22);
           Toast.show(`NEED ${GS.waveGoal.toLocaleString()} PTS`,'pink');
           Flash.do('#ff0033',.35);AudioSys.hurt();
@@ -1767,6 +1842,16 @@ const Game={
     GS.waveState='active';
     GS.enemies=[];GS.eBullets=[];GS.formations={};
     UI.obj();
+    // VS HUD
+    if(GS.mode==='vs'&&typeof Online!=='undefined'){
+      Online.vsActive=true;
+      $('vsHud').style.display='block';
+      $('vsOppName').textContent=Online.opp.name||'OPP';
+      $('vsYouScore').textContent='0';
+      $('vsOppScore').textContent='0';
+    } else {
+      $('vsHud').style.display='none';
+    }
     // initial pressure burst
     for(let i=0;i<3+Math.min(GS.wave,6);i++) continuousSpawn();
   },
@@ -1851,15 +1936,34 @@ const Game={
     const fxc=Engine.fxc;fxc.setTransform(Engine.dpr,0,0,Engine.dpr,0,0);fxc.clearRect(0,0,Engine.W,Engine.H);
     if(Quality.bloom&&GS.bullets.length){fxc.globalCompositeOperation='lighter';GS.bullets.forEach(b=>{fxc.fillStyle=b.col;fxc.globalAlpha=.12;fxc.beginPath();fxc.arc(b.x+ox,b.y+b.h/2+oy,12,0,TAU);fxc.fill();});fxc.globalAlpha=1;fxc.globalCompositeOperation='source-over';}
   },
+  endVs(clearedObj){
+    // Compare wave scores
+    const mine=GS.waveScore|0;
+    const theirs=(typeof Online!=='undefined'?Online.opp.waveScore:0)|0;
+    if(typeof Online!=='undefined'){
+      Online.sendEnd({score:GS.score,waveScore:GS.waveScore});
+      Online.vsActive=false;
+    }
+    $('vsHud').style.display='none';
+    let result='DRAW';
+    if(mine>theirs) result='YOU WIN';
+    else if(theirs>mine) result='YOU LOSE';
+    FloatText.add(Engine.W/2,Engine.H*.36,result,mine>=theirs?'#00ff9a':'#ff3b5c',24);
+    Toast.show(`${result} · ${mine} vs ${theirs}`, mine>=theirs?'ok':'pink');
+    // Still run end pipeline for rewards/board
+    this.end(mine>=theirs, {vs:true, result, mine, theirs, clearedObj});
+  },
   start(opts={}){
     const sh=shipData(),bon=shipBonus();
     const d=opts.diff||$('setDiff').value||'normal';
     const theme=opts.theme!=null?opts.theme:0;
+    // Fair VS seed
+    if(opts.seed!=null) seedRandom(opts.seed|0);
     Object.assign(GS,{
       score:0,wave:1,lives:3+(sh.life||0)+bon.lifeBonus,combo:0,comboT:0,maxCombo:0,
       kills:0,shots:0,damageTaken:0,bossesKilled:0,nearMiss:0,eliteKills:0,perfectWaves:0,crits:0,
       waveDamage:0,stars:0,diff:d,mode:opts.mode||'endless',isDaily:!!opts.daily,dailyDone:false,
-      sectorId:opts.sectorId??null,targetWaves:opts.targetWaves||0,
+      sectorId:opts.sectorId??null,targetWaves:opts.targetWaves||0,vsSeed:opts.seed||null,
       invuln:0,specialCD:sh.nova?0:2500,specialMax:7500,waveState:'announce',queue:[],qCD:0,
       waveTime:WAVE_DURATION,waveGoal:5000,waveScore:0,rampTier:0,spawnCD:200,bossSpawned:false,assaultActive:false,
       upg:{fireRate:140,triple:false,spread:false,shield:!!sh.shield||bon.shieldBonus,shieldOn:!!sh.shield||bon.shieldBonus,bulletSpd:1,moveSpd:1,scoreMult:1,piercing:false,drone:false,nova:!!sh.nova,magnet:false,crit:0},
@@ -1872,12 +1976,15 @@ const Game={
     UI.score();UI.wave();UI.lives();UI.pwr();UI.boss(false);UI.combo();UI.mission();UI.obj();
     hideAllMenus();UI.gameUI(true);$('dangerVig').style.opacity=0;
     AudioSys.startMusic();Engine.start();
-    if(!Meta.tutDone)setTimeout(()=>Tutorial.start(),300);
-    UI.announceWave(1,false,()=>this.beginAssault());
+    // Skip tutorial in VS matches
+    if(!Meta.tutDone&&GS.mode!=='vs')setTimeout(()=>Tutorial.start(),300);
+    else if(typeof Engine!=='undefined') Engine.paused=false;
+    UI.announceWave(1,GS.mode==='vs',()=>this.beginAssault());
   },
-  end(victory){
+  end(victory, extra){
     Engine.stop();Engine.running=false;GS.waveState='idle';GS.assaultActive=false;
     UI.gameUI(false);UI.boss(false);UI.obj();$('combo').style.display='none';$('pwrBar').innerHTML='';$('dangerVig').style.opacity=0;
+    $('vsHud').style.display='none';
     AudioSys.stopMusic();$('upgradeScreen').classList.remove('on');$('pauseOverlay').classList.remove('on');
 
     let stars=1;
@@ -1885,6 +1992,7 @@ const Game={
     if(GS.wave>=10||GS.score>=15000)stars=4;if(GS.wave>=13||(GS.score>=40000&&GS.maxCombo>=15)||(victory&&GS.damageTaken===0))stars=5;
     if(GS.diff==='nightmare')stars=Math.min(5,stars+1);
     if(victory&&GS.mode==='career')stars=Math.max(stars,3);
+    if(extra&&extra.vs&&extra.result==='YOU WIN')stars=Math.min(5,stars+1);
     GS.stars=stars;
 
     let mc=Math.round((25+GS.wave*14+GS.kills*.5+GS.bossesKilled*45+stars*35)*(hasPerk('scavenger')?1.15:1)*diffMul().mult);
@@ -1899,6 +2007,7 @@ const Game={
     }
     if(GS.isDaily) Daily.check(GS);
     if(GS.mode==='event'){mc=Math.round(mc*1.4);nc+=3;}
+    if(GS.mode==='vs'){mc=Math.round(mc*1.25);xp=Math.round(xp*1.25);if(extra&&extra.result==='YOU WIN'){mc+=80;nc+=3;}}
 
     Meta.mc+=mc;Meta.nc+=nc;Meta.addXP(xp);
     Meta.life.kills+=GS.kills;Meta.life.bosses+=GS.bossesKilled;Meta.life.runs++;
@@ -1908,12 +2017,19 @@ const Game={
     Meta.board.sort((a,b)=>b.score-a.score);Meta.board=Meta.board.slice(0,20);
     const achMC=checkAchievements(GS);Meta.save();
 
+    if(typeof Online!=='undefined'){
+      Online.submitScore({name:Meta.callsign||'PILOT',score:GS.score,wave:GS.wave,waveScore:GS.waveScore,mode:GS.mode})
+        .then((r)=>{ if(r.remote&&r.ok) Toast.show('SCORE POSTED ONLINE','ok'); }).catch(()=>{});
+    }
+
     $('goStars').textContent='★'.repeat(stars)+'☆'.repeat(5-stars);
     $('finalScore').textContent=GS.score.toLocaleString()+(isHS?' ★':'');
     $('finalWave').textContent=GS.wave;
-    $('finalMode').textContent=(victory?'CLEAR · ':'')+(GS.mode==='career'?'CAREER':GS.mode==='daily'?'DAILY':GS.mode==='event'?'EVENT':'ENDLESS')+' · '+diffMul().label;
+    let modeLbl=GS.mode==='career'?'CAREER':GS.mode==='daily'?'DAILY':GS.mode==='event'?'EVENT':GS.mode==='vs'?'VS 1v1':'ENDLESS';
+    if(extra&&extra.vs) modeLbl=`VS · ${extra.result} (${extra.mine}–${extra.theirs})`;
+    $('finalMode').textContent=(victory?'CLEAR · ':'')+modeLbl+' · '+diffMul().label;
     $('goRewards').innerHTML=`+${mc} MC · +${nc} NC · +${xp} XP${achMC?` · +${achMC} medals`:''}`;
-    $('goStats').innerHTML=`<div>KILLS <b>${GS.kills}</b></div><div>ELITES <b>${GS.eliteKills}</b></div><div>BOSSES <b>${GS.bossesKilled}</b></div><div>COMBO <b>${GS.maxCombo}</b></div><div>NEAR <b>${GS.nearMiss}</b></div><div>CRITS <b>${GS.crits}</b></div><div>PERFECT <b>${GS.perfectWaves}</b></div><div>STYLE <b>×${GS.styleMult.toFixed(2)}</b></div>`;
+    $('goStats').innerHTML=`<div>KILLS <b>${GS.kills}</b></div><div>ELITES <b>${GS.eliteKills}</b></div><div>BOSSES <b>${GS.bossesKilled}</b></div><div>COMBO <b>${GS.maxCombo}</b></div><div>NEAR <b>${GS.nearMiss}</b></div><div>CRITS <b>${GS.crits}</b></div><div>WAVE OBJ <b>${GS.waveScore}</b></div><div>STYLE <b>×${GS.styleMult.toFixed(2)}</b></div>`;
     $('gameOverMenu').classList.add('on');
   },
   togglePause(){
@@ -1924,9 +2040,12 @@ const Game={
     if(Engine.paused)$('pauseOverlay').classList.add('on');else $('pauseOverlay').classList.remove('on');
   },
   toHub(){
-    Engine.stop();Engine.running=false;Engine.paused=false;GS.waveState='idle';
+    Engine.stop();Engine.running=false;Engine.paused=false;GS.waveState='idle';GS.assaultActive=false;
     GS.enemies=[];GS.bullets=[];GS.eBullets=[];GS.drops=[];
-    UI.gameUI(false);UI.boss(false);$('combo').style.display='none';$('pwrBar').innerHTML='';$('dangerVig').style.opacity=0;
+    UI.gameUI(false);UI.boss(false);UI.obj();
+    $('combo').style.display='none';$('pwrBar').innerHTML='';$('dangerVig').style.opacity=0;
+    $('vsHud').style.display='none';
+    if(typeof Online!=='undefined') Online.vsActive=false;
     AudioSys.stopMusic();
     $('upgradeScreen').classList.remove('on');$('pauseOverlay').classList.remove('on');$('gameOverMenu').classList.remove('on');
     showHome();
@@ -1935,7 +2054,7 @@ const Game={
 
 /*════════ UI HOME / PAGES ════════*/
 function hideAllMenus(){
-  ['titleScreen','gateScreen','home','pageCareer','pageGarage','pageShop','pageSocial','pageSettings','gameOverMenu','pauseOverlay','upgradeScreen'].forEach(id=>$(id).classList.remove('on'));
+  ['titleScreen','gateScreen','home','pageCareer','pageGarage','pageShop','pageSocial','pageRank','pageVs','pageSettings','gameOverMenu','pauseOverlay','upgradeScreen'].forEach(id=>$(id).classList.remove('on'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('on'));
   $('botnav').style.display='none';
 }
@@ -1954,6 +2073,8 @@ function showPage(id,nav){
   if(id==='pageGarage')renderGarage();
   if(id==='pageShop')renderShop();
   if(id==='pageSocial')renderSocial();
+  if(id==='pageRank')renderGlobalRank();
+  if(id==='pageVs')renderVsLobby();
 }
 
 const UIHome={
@@ -2123,6 +2244,58 @@ function renderSocial(){
   });
 }
 
+async function renderGlobalRank(){
+  const st=$('rankStatus');const list=$('globalList');
+  st.textContent='Fetching world top…';
+  list.innerHTML='';
+  if(typeof Online!=='undefined'){
+    $('lbUrlInput').value=Online.cfg.leaderboardUrl||'';
+    $('lbKeyInput').value=Online.cfg.apiKey||'';
+  }
+  try{
+    const top=await Online.fetchTop(30);
+    if(!top.length){
+      st.textContent='No scores yet — finish a run to post. Configure backend URL for true multi-device global.';
+      return;
+    }
+    st.textContent=Online.cfg.leaderboardUrl?'Online + local merged':'Local device board (set backend URL for global)';
+    top.forEach((r,i)=>{
+      const row=document.createElement('div');row.className='list-row';
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+      row.innerHTML=`<div class="lr-l"><div class="lr-t">${medal} ${r.name}</div><div class="lr-s">${(r.mode||'').toUpperCase()} · W${r.wave} · OBJ ${r.waveScore||0}</div></div><div class="lr-r">${r.score.toLocaleString()}</div>`;
+      list.appendChild(row);
+    });
+  }catch(e){
+    st.textContent='Rank fetch error';
+  }
+}
+
+function renderVsLobby(){
+  $('vsName').textContent=Meta.callsign||'PILOT';
+  updateVsStatus();
+}
+function updateVsStatus(){
+  if(typeof Online==='undefined')return;
+  const st=$('vsStatus');const info=$('vsLobbyInfo');const ready=$('vsReadyBtn');
+  const map={idle:'Idle · create or join a room',hosting:'Creating room…',waiting:'Waiting for opponent…',joining:'Joining…',connected:'Connected · both press READY',disconnected:'Disconnected',error:'Connection error'};
+  st.textContent=map[Online.status]||Online.status;
+  if(Online.roomCode)$('vsCodeBox').textContent=Online.roomCode.split('').join(' ');
+  info.innerHTML=`YOU: <b style="color:var(--c)">${Meta.callsign||'PILOT'}</b>${Online.meReady?' ✓':''}<br>OPP: <b style="color:var(--m)">${Online.opp.name||'—'}</b>${Online.opp.ready?' ✓':''}<br>ROLE: ${(Online.role||'—').toUpperCase()}`;
+  ready.disabled=!(Online.status==='connected'||Online.status==='waiting');
+  if(Online.status==='connected') ready.disabled=false;
+}
+
+function seedRandom(seed){
+  // Mulberry32 — shared stream for fair VS spawns
+  let t=seed>>>0;
+  Math.random=function(){
+    t+=0x6D2B79F5;
+    let r=Math.imul(t^t>>>15,1|t);
+    r^=r+Math.imul(r^r>>>7,61|r);
+    return ((r^r>>>14)>>>0)/4294967296;
+  };
+}
+
 const Tutorial={
   step:0,
   steps:[
@@ -2220,6 +2393,56 @@ function wireUI(){
   $('modeEndless').onclick=()=>Game.start({mode:'endless',diff:$('setDiff').value});
   $('modeDaily').onclick=()=>{if(Meta.dailyDone){Toast.show('DAILY ALREADY CLEARED');return;}Game.start({mode:'daily',diff:'hard',daily:true,theme:hashStr(todayKey())%6});};
   $('modeEvent').onclick=()=>Game.start({mode:'event',diff:'nightmare',theme:5});
+  $('modeVs').onclick=()=>showPage('pageVs','home');
+  $('modeRank').onclick=()=>showPage('pageRank','social');
+
+  // VS lobby
+  $('vsHostBtn').onclick=async()=>{
+    try{
+      $('vsStatus').textContent='Creating room…';
+      const code=await Online.hostRoom();
+      $('vsCodeBox').textContent=code.split('').join(' ');
+      Toast.show('ROOM '+code,'ok');
+      updateVsStatus();
+      Online.onConnect=()=>{updateVsStatus();Toast.show('OPPONENT JOINED','ok');};
+      Online.onLobby=()=>updateVsStatus();
+      Online.onStart=({seed,diff})=>{
+        showHome();hideAllMenus();
+        Game.start({mode:'vs',diff:diff||$('vsDiff').value,seed});
+      };
+      Online.onSync=()=>{if($('vsOppScore'))$('vsOppScore').textContent=(Online.opp.waveScore||0).toLocaleString();};
+      Online.onDisconnect=()=>updateVsStatus();
+    }catch(e){Toast.show('HOST FAILED','pink');$('vsStatus').textContent=String(e.message||e);}
+  };
+  $('vsJoinBtn').onclick=async()=>{
+    const code=$('vsJoinInput').value.trim();
+    if(code.length<4){Toast.show('ENTER CODE');return;}
+    try{
+      $('vsStatus').textContent='Joining…';
+      await Online.joinRoom(code);
+      Toast.show('JOINED '+Online.roomCode,'ok');
+      updateVsStatus();
+      Online.onLobby=()=>updateVsStatus();
+      Online.onStart=({seed,diff})=>{
+        hideAllMenus();
+        Game.start({mode:'vs',diff:diff||$('vsDiff').value,seed});
+      };
+      Online.onSync=()=>{if($('vsOppScore'))$('vsOppScore').textContent=(Online.opp.waveScore||0).toLocaleString();};
+      Online.onDisconnect=()=>updateVsStatus();
+    }catch(e){Toast.show('JOIN FAILED','pink');$('vsStatus').textContent=String(e.message||e);}
+  };
+  $('vsReadyBtn').onclick=()=>{
+    Online.setReady($('vsDiff').value);
+    updateVsStatus();
+    Toast.show('READY SENT','ok');
+  };
+  $('vsCancelBtn').onclick=()=>{Online.destroyPeer();$('vsCodeBox').textContent='— — — — —';updateVsStatus();};
+  $('rankRefresh').onclick=()=>renderGlobalRank();
+  $('lbSaveCfg').onclick=()=>{
+    Online.setConfig({leaderboardUrl:$('lbUrlInput').value.trim(),apiKey:$('lbKeyInput').value.trim()});
+    Toast.show('ONLINE CONFIG SAVED','ok');
+    renderGlobalRank();
+  };
 
   $('plusMC').onclick=$('plusNC').onclick=()=>showPage('pageShop','shop');
 
