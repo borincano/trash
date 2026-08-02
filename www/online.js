@@ -15,6 +15,7 @@
   const FIRESTORE_PROJECT = 'galaxymuzz';
   const FIRESTORE_COLLECTION = 'muzzgalaxy_scores';
   const FIRESTORE_ROOMS = 'muzzgalaxy_rooms';
+  const FIRESTORE_PROFILES = 'muzzgalaxy_profiles';
   const MAX_GLOBAL_ROOMS = 10;
   const ROOM_TTL_MS = 8 * 60 * 1000; // stale rooms auto-drop from list
   const GLOBAL_FIRESTORE_URL =
@@ -27,6 +28,36 @@
     FIRESTORE_PROJECT +
     '/databases/(default)/documents/' +
     FIRESTORE_ROOMS;
+  const PROFILES_URL =
+    'https://firestore.googleapis.com/v1/projects/' +
+    FIRESTORE_PROJECT +
+    '/databases/(default)/documents/' +
+    FIRESTORE_PROFILES;
+  const STORAGE_UID = 'muzz_device_uid_v1';
+
+  function deviceUid() {
+    try {
+      let id = localStorage.getItem(STORAGE_UID);
+      if (!id) {
+        id =
+          'u_' +
+          Math.random().toString(36).slice(2, 10) +
+          Date.now().toString(36) +
+          Math.random().toString(36).slice(2, 8);
+        localStorage.setItem(STORAGE_UID, id);
+      }
+      return id;
+    } catch (e) {
+      return 'u_local_' + String(Date.now());
+    }
+  }
+
+  function cleanNick(n) {
+    return String(n || '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9_\-]/g, '')
+      .slice(0, 12);
+  }
 
   // Legacy fallback (only if Firestore unreachable and user overrides)
   const GLOBAL_BLOB_ID = '019fc495-2ae7-7692-b017-27f5a2ac92ef';
@@ -298,6 +329,89 @@
     return true;
   }
 
+  function profileFromDoc(doc) {
+    if (!doc || !doc.fields) return null;
+    const f = doc.fields;
+    return {
+      nick: String(fieldVal(f.nick) || '').toUpperCase(),
+      uid: String(fieldVal(f.uid) || ''),
+      points: Number(fieldVal(f.points) || 0) | 0,
+      level: Number(fieldVal(f.level) || 1) | 0,
+      rankVs: Number(fieldVal(f.rankVs) || 0) | 0,
+      rankSurvivor: Number(fieldVal(f.rankSurvivor) || 0) | 0,
+      bestScore: Number(fieldVal(f.bestScore) || 0) | 0,
+      bestWave: Number(fieldVal(f.bestWave) || 0) | 0,
+      vsKills: Number(fieldVal(f.vsKills) || 0) | 0,
+      ts: Number(fieldVal(f.ts) || 0),
+    };
+  }
+
+  function profileToBody(p) {
+    return {
+      fields: {
+        nick: { stringValue: String(p.nick || '').toUpperCase() },
+        uid: { stringValue: String(p.uid || '') },
+        points: { integerValue: String(p.points | 0) },
+        level: { integerValue: String(Math.max(1, p.level | 0)) },
+        rankVs: { integerValue: String(p.rankVs | 0) },
+        rankSurvivor: { integerValue: String(p.rankSurvivor | 0) },
+        bestScore: { integerValue: String(p.bestScore | 0) },
+        bestWave: { integerValue: String(p.bestWave | 0) },
+        vsKills: { integerValue: String(p.vsKills | 0) },
+        ts: { integerValue: String(p.ts || Date.now()) },
+      },
+    };
+  }
+
+  async function firestoreGetProfile(nick) {
+    const n = cleanNick(nick);
+    if (!n) return null;
+    const url = withKey(PROFILES_URL + '/' + encodeURIComponent(n), '');
+    const res = await fetch(url, { method: 'GET', headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error('Profile GET ' + res.status + (t ? ': ' + t.slice(0, 80) : ''));
+    }
+    return profileFromDoc(await res.json());
+  }
+
+  async function firestoreUpsertProfile(p) {
+    const n = cleanNick(p.nick);
+    const url =
+      PROFILES_URL +
+      '/' +
+      encodeURIComponent(n) +
+      '?updateMask.fieldPaths=nick&updateMask.fieldPaths=uid&updateMask.fieldPaths=points&updateMask.fieldPaths=level&updateMask.fieldPaths=rankVs&updateMask.fieldPaths=rankSurvivor&updateMask.fieldPaths=bestScore&updateMask.fieldPaths=bestWave&updateMask.fieldPaths=vsKills&updateMask.fieldPaths=ts';
+    let res = await fetch(withKey(url, ''), {
+      method: 'PATCH',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(profileToBody(Object.assign({}, p, { nick: n }))),
+    });
+    if (res.status === 404) {
+      res = await fetch(withKey(PROFILES_URL + '?documentId=' + encodeURIComponent(n), ''), {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileToBody(Object.assign({}, p, { nick: n }))),
+      });
+    }
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error('Profile save ' + res.status + (t ? ': ' + t.slice(0, 100) : ''));
+    }
+    return true;
+  }
+
+  async function firestoreDeleteProfile(nick) {
+    const n = cleanNick(nick);
+    if (!n) return true;
+    const url = withKey(PROFILES_URL + '/' + encodeURIComponent(n), '');
+    const res = await fetch(url, { method: 'DELETE', headers: { Accept: 'application/json' } });
+    if (res.status === 404) return true;
+    if (!res.ok) throw new Error('Profile delete ' + res.status);
+    return true;
+  }
+
   async function remoteGet(url, apiKey) {
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
     if (apiKey) {
@@ -362,6 +476,126 @@
     publishedRoom: null,
     lastRoomsError: null,
     MAX_ROOMS: MAX_GLOBAL_ROOMS,
+    uid: deviceUid(),
+    profile: null,
+
+    /* ───────── UNIQUE NICK + PROFILE ───────── */
+    async getProfile(nick) {
+      try {
+        return await firestoreGetProfile(nick || (this.profile && this.profile.nick));
+      } catch (e) {
+        return null;
+      }
+    },
+
+    async isNickAvailable(nick) {
+      const n = cleanNick(nick);
+      if (n.length < 3) return { ok: false, reason: 'MIN 3 CHARS' };
+      if (n === 'PILOT' || n === 'OPP' || n === 'HOST') return { ok: false, reason: 'RESERVED' };
+      try {
+        const p = await firestoreGetProfile(n);
+        if (!p) return { ok: true };
+        if (p.uid === this.uid) return { ok: true, own: true };
+        return { ok: false, reason: 'NICK TAKEN' };
+      } catch (e) {
+        return { ok: false, reason: 'OFFLINE' };
+      }
+    },
+
+    /**
+     * Claim unique nick for this device. Fails if taken by another uid.
+     */
+    async claimNick(nick, stats) {
+      const n = cleanNick(nick);
+      if (n.length < 3) throw new Error('Nick min 3 characters');
+      if (n === 'PILOT' || n === 'OPP' || n === 'HOST') throw new Error('Nick reserved');
+      const existing = await firestoreGetProfile(n);
+      if (existing && existing.uid && existing.uid !== this.uid) {
+        throw new Error('NICK TAKEN');
+      }
+      // Release previous nick if we own a different one
+      const prev = this.profile && this.profile.nick;
+      if (prev && prev !== n) {
+        try {
+          const old = await firestoreGetProfile(prev);
+          if (old && old.uid === this.uid) await firestoreDeleteProfile(prev);
+        } catch (e) {}
+      }
+      const ranks = await this.computeRanks(n);
+      const body = {
+        nick: n,
+        uid: this.uid,
+        points: (stats && stats.points) | 0,
+        level: Math.max(1, (stats && stats.level) | 0 || 1),
+        rankVs: ranks.rankVs,
+        rankSurvivor: ranks.rankSurvivor,
+        bestScore: (stats && stats.bestScore) | 0,
+        bestWave: (stats && stats.bestWave) | 0,
+        vsKills: (stats && stats.vsKills) | 0,
+        ts: Date.now(),
+      };
+      // If reclaiming own nick, keep higher stats
+      if (existing && existing.uid === this.uid) {
+        body.points = Math.max(body.points, existing.points | 0);
+        body.level = Math.max(body.level, existing.level | 0);
+        body.bestScore = Math.max(body.bestScore, existing.bestScore | 0);
+        body.bestWave = Math.max(body.bestWave, existing.bestWave | 0);
+        body.vsKills = Math.max(body.vsKills, existing.vsKills | 0);
+      }
+      await firestoreUpsertProfile(body);
+      this.profile = body;
+      return body;
+    },
+
+    async computeRanks(nick) {
+      const n = cleanNick(nick);
+      let all = [];
+      try {
+        all = await this.fetchTop(120);
+      } catch (e) {
+        all = [];
+      }
+      const survivor = all
+        .filter((e) => e.mode !== 'vs')
+        .sort((a, b) => b.score - a.score || b.wave - a.wave);
+      const battler = all
+        .filter((e) => e.mode === 'vs')
+        .sort((a, b) => b.kills - a.kills || b.score - a.score);
+      const si = survivor.findIndex((e) => e.name === n);
+      const vi = battler.findIndex((e) => e.name === n);
+      return {
+        rankSurvivor: si >= 0 ? si + 1 : 0,
+        rankVs: vi >= 0 ? vi + 1 : 0,
+      };
+    },
+
+    async syncProfile(stats) {
+      const n = cleanNick((stats && stats.nick) || (this.profile && this.profile.nick) || '');
+      if (!n || n === 'PILOT') return null;
+      try {
+        const existing = await firestoreGetProfile(n);
+        if (existing && existing.uid && existing.uid !== this.uid) return null; // not our nick
+        const ranks = await this.computeRanks(n);
+        const body = {
+          nick: n,
+          uid: this.uid,
+          points: Math.max((stats && stats.points) | 0, (existing && existing.points) | 0),
+          level: Math.max(1, (stats && stats.level) | 0 || 1, (existing && existing.level) | 0),
+          rankVs: ranks.rankVs,
+          rankSurvivor: ranks.rankSurvivor,
+          bestScore: Math.max((stats && stats.bestScore) | 0, (existing && existing.bestScore) | 0),
+          bestWave: Math.max((stats && stats.bestWave) | 0, (existing && existing.bestWave) | 0),
+          vsKills: Math.max((stats && stats.vsKills) | 0, (existing && existing.vsKills) | 0),
+          ts: Date.now(),
+        };
+        await firestoreUpsertProfile(body);
+        this.profile = body;
+        return body;
+      } catch (e) {
+        console.warn('syncProfile', e);
+        return null;
+      }
+    },
 
     /* ───────── GLOBAL LEADERBOARD (Firestore galaxymuzz) ───────── */
     async fetchTop(limit) {

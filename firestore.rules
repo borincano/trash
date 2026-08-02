@@ -40,6 +40,21 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    // Unique pilot profiles (doc id = NICK uppercase)
+    match /muzzgalaxy_profiles/{nick} {
+      allow read: if true;
+      allow create, update: if
+        request.resource.data.keys().hasAll(['nick', 'uid', 'points', 'level', 'ts']) &&
+        request.resource.data.nick is string &&
+        request.resource.data.nick.size() >= 3 &&
+        request.resource.data.nick.size() <= 12 &&
+        request.resource.data.uid is string &&
+        request.resource.data.uid.size() >= 8 &&
+        request.resource.data.points is int &&
+        request.resource.data.level is int;
+      allow delete: if true;
+    }
+
     // Default deny — social / private / chat untouched
     match /{document=**} {
       allow read, write: if false;

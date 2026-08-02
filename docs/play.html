@@ -432,12 +432,25 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div class="page-body" id="shopList"></div>
 </div>
 
-<!-- SOCIAL -->
+<!-- SOCIAL / PROFILE -->
 <div class="page" id="pageSocial">
-  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>SOCIAL</h2></div>
+  <div class="page-head"><button class="back-btn" data-back>‹</button><h2>PROFILE</h2></div>
   <div class="page-body">
-    <div class="section-h"><h3>CALLSIGN</h3></div>
-    <input class="input" id="callsignInput" maxlength="12" style="margin-bottom:12px;letter-spacing:.1em">
+    <div class="section-h"><h3>NICK (UNIQUE)</h3></div>
+    <input class="input" id="callsignInput" maxlength="12" placeholder="3–12 letters" style="margin-bottom:8px;letter-spacing:.1em">
+    <button class="btn cyan" id="claimNickBtn" type="button" style="width:100%;margin-bottom:8px">SAVE NICK</button>
+    <div class="chip" id="nickStatus" style="margin-bottom:12px">Choose a unique nick</div>
+    <div id="profileCard" style="padding:12px;border:1px solid rgba(0,232,255,.3);border-radius:12px;background:rgba(0,20,40,.45);margin-bottom:14px">
+      <div style="font-family:Orbitron,sans-serif;font-size:.85rem;color:var(--c);letter-spacing:.08em;margin-bottom:10px" id="profNick">PILOT</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-family:'Share Tech Mono',monospace;font-size:.72rem;color:rgba(0,232,255,.85)">
+        <div>LEVEL <b id="profLevel" style="color:#fff">1</b></div>
+        <div>POINTS <b id="profPoints" style="color:var(--y)">0</b></div>
+        <div>RANK SURVIVOR <b id="profRankSurv" style="color:var(--g)">—</b></div>
+        <div>RANK VS <b id="profRankVs" style="color:var(--m)">—</b></div>
+        <div>BEST WAVE <b id="profWave" style="color:#fff">1</b></div>
+        <div>VS KILLS <b id="profVsKills" style="color:#fff">0</b></div>
+      </div>
+    </div>
     <div class="section-h"><h3>LOCAL BOARD</h3><span>This device</span></div>
     <div id="lbList"></div>
     <div class="section-h" style="margin-top:14px"><h3>MEDALS</h3><span id="achCount">0/20</span></div>
@@ -663,7 +676,8 @@ const ACH=[
 
 const Meta={
   callsign:'PILOT', mc:500, nc:20, xp:0, level:1,
-  highScore:0, highWave:1,
+  highScore:0, highWave:1, points:0, vsKills:0, nickClaimed:false,
+  rankSurvivor:0, rankVs:0,
   ownedShips:['phantom'], ship:'phantom',
   shipUpg:{phantom:{engine:0,weapons:0,shield:0,thrusters:0}},
   ownedPerks:[], ach:{}, board:[],
@@ -680,6 +694,8 @@ const Meta={
     if(!this.shipUpg[this.ship]) this.shipUpg[this.ship]={engine:0,weapons:0,shield:0,thrusters:0};
     if(!this.ach) this.ach={}; if(!this.board) this.board=[]; if(!this.career) this.career={};
     if(!this.life) this.life={kills:0,bosses:0,runs:0};
+    if(this.points==null) this.points=this.highScore||0;
+    if(this.vsKills==null) this.vsKills=0;
     if(this.dailyDate!==todayKey()){this.dailyDone=false;this.dailyDate=todayKey();}
     this.processLogin();
     this.syncForms();
@@ -700,7 +716,8 @@ const Meta={
   save(){
     localStorage.setItem(SAVE_KEY,JSON.stringify({
       callsign:this.callsign,mc:this.mc,nc:this.nc,xp:this.xp,level:this.level,
-      highScore:this.highScore,highWave:this.highWave,
+      highScore:this.highScore,highWave:this.highWave,points:this.points|0,vsKills:this.vsKills|0,
+      nickClaimed:!!this.nickClaimed,rankSurvivor:this.rankSurvivor|0,rankVs:this.rankVs|0,
       ownedShips:this.ownedShips,ship:this.ship,shipUpg:this.shipUpg,ownedPerks:this.ownedPerks,
       ach:this.ach,board:this.board.slice(0,20),career:this.career,
       dailyDate:this.dailyDate,dailyDone:this.dailyDone,dailyNcClaimed:this.dailyNcClaimed,
@@ -709,6 +726,16 @@ const Meta={
       quality:this.quality,sfx:this.sfx,music:this.music,haptics:this.haptics,shake:this.shake,showFps:this.showFps
     }));
     UIHome.refresh();
+  },
+  profileStats(){
+    return {
+      nick:this.callsign,
+      points:this.points|0,
+      level:this.level|0,
+      bestScore:this.highScore|0,
+      bestWave:this.highWave|0,
+      vsKills:this.vsKills|0
+    };
   },
   syncForms(){
     $('setQuality').value=this.quality;
@@ -2308,20 +2335,24 @@ const Game={
 
     Meta.mc+=mc;Meta.nc+=nc;Meta.addXP(xp);
     Meta.life.kills+=GS.kills;Meta.life.bosses+=GS.bossesKilled;Meta.life.runs++;
+    Meta.points=(Meta.points|0)+(GS.score|0);
+    if(GS.mode==='vs') Meta.vsKills=(Meta.vsKills|0)+(GS.kills|0);
     let isHS=false;if(GS.score>Meta.highScore){Meta.highScore=GS.score;isHS=true;}
     if(GS.wave>Meta.highWave)Meta.highWave=GS.wave;
     Meta.board.push({name:Meta.callsign||'PILOT',score:GS.score,wave:GS.wave,diff:GS.diff,mode:GS.mode,date:todayKey(),stars});
     Meta.board.sort((a,b)=>b.score-a.score);Meta.board=Meta.board.slice(0,20);
     const achMC=checkAchievements(GS);Meta.save();
 
-    if(typeof Online!=='undefined'){
+    if(typeof Online!=='undefined'&&Meta.nickClaimed&&Meta.callsign&&Meta.callsign!=='PILOT'){
       Online.submitScore({
-        name:Meta.callsign||'PILOT',
+        name:Meta.callsign,
         score:GS.score,
         wave:GS.wave,
         waveScore:GS.waveScore,
         kills:GS.kills,
         mode:GS.mode
+      }).then(()=>Online.syncProfile(Meta.profileStats())).then((p)=>{
+        if(p){Meta.rankSurvivor=p.rankSurvivor|0;Meta.rankVs=p.rankVs|0;Meta.save();}
       }).catch(()=>{});
     }
 
@@ -2526,8 +2557,46 @@ function buyShop(item){
   Meta.save();AudioSys.upgrade();Toast.show('PURCHASE OK','ok');renderShop();checkAchievements();
 }
 
-function renderSocial(){
+function fillProfileCard(p){
+  const nick=Meta.callsign||'PILOT';
+  if($('profNick'))$('profNick').textContent=nick+(Meta.nickClaimed?' ✓':'');
+  if($('profLevel'))$('profLevel').textContent=String((p&&p.level)||Meta.level||1);
+  if($('profPoints'))$('profPoints').textContent=((p&&p.points)||Meta.points||0).toLocaleString();
+  if($('profRankSurv'))$('profRankSurv').textContent=(p&&p.rankSurvivor)?('#'+p.rankSurvivor):((Meta.rankSurvivor)?('#'+Meta.rankSurvivor):'—');
+  if($('profRankVs'))$('profRankVs').textContent=(p&&p.rankVs)?('#'+p.rankVs):((Meta.rankVs)?('#'+Meta.rankVs):'—');
+  if($('profWave'))$('profWave').textContent=String((p&&p.bestWave)||Meta.highWave||1);
+  if($('profVsKills'))$('profVsKills').textContent=String((p&&p.vsKills)||Meta.vsKills||0);
+  if($('nickStatus')){
+    if(!Meta.nickClaimed||nick==='PILOT')$('nickStatus').textContent='Claim a unique nick to post ranks';
+    else $('nickStatus').textContent='Nick locked to this device · unique worldwide';
+  }
+}
+async function renderSocial(){
   $('callsignInput').value=Meta.callsign||'PILOT';
+  fillProfileCard(Online.profile||null);
+  // Refresh cloud profile if claimed
+  if(typeof Online!=='undefined'&&Meta.nickClaimed&&Meta.callsign&&Meta.callsign!=='PILOT'){
+    try{
+      const p=await Online.getProfile(Meta.callsign);
+      if(p){
+        if(p.uid&&p.uid!==Online.uid){
+          // lost nick somehow
+          Meta.nickClaimed=false;
+          if($('nickStatus'))$('nickStatus').textContent='Nick conflict — choose another';
+        } else {
+          Online.profile=p;
+          Meta.rankSurvivor=p.rankSurvivor|0;
+          Meta.rankVs=p.rankVs|0;
+          Meta.points=Math.max(Meta.points|0,p.points|0);
+          fillProfileCard(p);
+          Meta.save();
+        }
+      } else {
+        // re-sync if missing
+        Online.syncProfile(Meta.profileStats()).then(pr=>{if(pr)fillProfileCard(pr);});
+      }
+    }catch(e){}
+  }
   const lb=$('lbList');lb.innerHTML='';
   if(!Meta.board.length)lb.innerHTML='<div class="list-row"><div class="lr-s">No runs yet — play Career or Endless!</div></div>';
   Meta.board.forEach((r,i)=>{
@@ -2546,6 +2615,30 @@ function renderSocial(){
     row.innerHTML=`<div class="lr-l"><div class="lr-t">${ok?'✓ ':''}${a.name}</div><div class="lr-s">${a.desc}</div></div><div class="lr-r">${a.mc}</div>`;
     al.appendChild(row);
   });
+}
+async function claimNickFromUI(){
+  const raw=($('callsignInput').value||'').trim();
+  const nick=raw.toUpperCase().replace(/[^A-Z0-9_\-]/g,'').slice(0,12);
+  if(nick.length<3){Toast.show('MIN 3 CHARS','pink');return;}
+  if(nick==='PILOT'){Toast.show('CHOOSE ANOTHER NICK','pink');return;}
+  if($('nickStatus'))$('nickStatus').textContent='Checking…';
+  try{
+    const av=await Online.isNickAvailable(nick);
+    if(!av.ok){Toast.show(av.reason||'NICK TAKEN','pink');if($('nickStatus'))$('nickStatus').textContent=av.reason||'Taken';return;}
+    const p=await Online.claimNick(nick,Meta.profileStats());
+    Meta.callsign=nick;
+    Meta.nickClaimed=true;
+    Meta.rankSurvivor=p.rankSurvivor|0;
+    Meta.rankVs=p.rankVs|0;
+    Meta.save();
+    fillProfileCard(p);
+    Toast.show('NICK SAVED · '+nick,'ok');
+    if($('nickStatus'))$('nickStatus').textContent='Unique nick registered';
+    UIHome.refresh();
+  }catch(e){
+    Toast.show(String(e.message||'FAILED').slice(0,28),'pink');
+    if($('nickStatus'))$('nickStatus').textContent=String(e.message||e);
+  }
 }
 
 function rankRow(r,i,kind){
@@ -2922,7 +3015,11 @@ function wireUI(){
 
   $('plusMC').onclick=$('plusNC').onclick=()=>showPage('pageShop','shop');
 
-  $('callsignInput').onchange=()=>{Meta.callsign=($('callsignInput').value||'PILOT').slice(0,12).toUpperCase();Meta.save();};
+  if($('claimNickBtn'))$('claimNickBtn').onclick=()=>claimNickFromUI();
+  if($('callsignInput')){
+    $('callsignInput').onkeydown=e=>{if(e.key==='Enter')claimNickFromUI();};
+    // Do not free-set callsign on change — must claim unique nick
+  }
 
   ['setQuality','setSfx','setMusic','setHaptics','setShake','setFps'].forEach(id=>{
     $(id).addEventListener('change',()=>Meta.readSettings());
