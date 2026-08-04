@@ -17,7 +17,8 @@
   const FIRESTORE_ROOMS = 'muzzgalaxy_rooms';
   const FIRESTORE_PROFILES = 'muzzgalaxy_profiles';
   const MAX_GLOBAL_ROOMS = 10;
-  const ROOM_TTL_MS = 8 * 60 * 1000; // stale rooms auto-drop from list
+  const MAX_ROOM_PLAYERS = 4; // host + up to 3 guests — squad survival
+  const ROOM_TTL_MS = 12 * 60 * 1000; // stale rooms auto-drop from list
   const GLOBAL_FIRESTORE_URL =
     'https://firestore.googleapis.com/v1/projects/' +
     FIRESTORE_PROJECT +
@@ -297,23 +298,30 @@
 
   async function firestoreUpsertRoom(room) {
     const code = String(room.code || '').toUpperCase();
-    const url = withKey(ROOMS_URL + '/' + encodeURIComponent(code), '');
-    // PATCH with updateMask creates if missing on some APIs; use PATCH then POST fallback
-    let res = await fetch(url + '?updateMask.fieldPaths=code&updateMask.fieldPaths=host&updateMask.fieldPaths=diff&updateMask.fieldPaths=status&updateMask.fieldPaths=players&updateMask.fieldPaths=ts', {
-      method: 'PATCH',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(roomToBody(room)),
+    const body = JSON.stringify(roomToBody(room));
+    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    // Prefer POST create (reliable), then PATCH update
+    let res = await fetch(withKey(ROOMS_URL + '?documentId=' + encodeURIComponent(code), ''), {
+      method: 'POST',
+      headers,
+      body,
     });
-    if (res.status === 404) {
-      res = await fetch(withKey(ROOMS_URL + '?documentId=' + encodeURIComponent(code), ''), {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(roomToBody(room)),
-      });
+    if (res.status === 409 || res.status === 400) {
+      // already exists → patch
+      res = await fetch(
+        withKey(
+          ROOMS_URL +
+            '/' +
+            encodeURIComponent(code) +
+            '?updateMask.fieldPaths=code&updateMask.fieldPaths=host&updateMask.fieldPaths=diff&updateMask.fieldPaths=status&updateMask.fieldPaths=players&updateMask.fieldPaths=ts',
+          ''
+        ),
+        { method: 'PATCH', headers, body }
+      );
     }
     if (!res.ok) {
       const t = await res.text().catch(() => '');
-      throw new Error('Room save ' + res.status + (t ? ': ' + t.slice(0, 100) : ''));
+      throw new Error('Room save ' + res.status + (t ? ': ' + t.slice(0, 120) : ''));
     }
     return true;
   }
@@ -700,36 +708,46 @@
         this.lastRoomsError = null;
       } catch (e) {
         this.lastRoomsError = String(e.message || e);
+        console.warn('listRooms', e);
         return [];
       }
       const rooms = docs.map(roomFromDoc).filter(Boolean);
       const live = [];
       for (const r of rooms) {
-        const age = now - (r.ts || 0);
-        if (age > ROOM_TTL_MS || r.status === 'playing') {
-          // purge stale / finished in background
+        const ts = r.ts > 0 ? r.ts : now;
+        const age = now - ts;
+        if (r.status === 'playing' || age > ROOM_TTL_MS) {
           firestoreDeleteRoom(r.code).catch(() => {});
           continue;
         }
-        if (r.status === 'open' || r.status === 'full') live.push(r);
+        if (r.status === 'open' || r.status === 'full' || !r.status) {
+          r.players = Math.min(MAX_ROOM_PLAYERS, Math.max(1, (r.players | 0) || 1));
+          live.push(r);
+        }
       }
       live.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       return live.slice(0, MAX_GLOBAL_ROOMS);
     },
 
     async publishRoom(meta) {
-      const open = await this.listRooms();
-      // Don't count our own room if re-publish
-      const others = open.filter((r) => r.code !== String(meta.code || '').toUpperCase());
+      let open = [];
+      try {
+        open = await this.listRooms();
+      } catch (e) {
+        open = [];
+      }
+      const code = String(meta.code || '').toUpperCase();
+      const others = open.filter((r) => r.code !== code);
       if (others.length >= MAX_GLOBAL_ROOMS) {
         throw new Error('GLOBAL FULL · max ' + MAX_GLOBAL_ROOMS + ' rooms');
       }
+      const players = Math.min(MAX_ROOM_PLAYERS, Math.max(1, (meta.players | 0) || 1));
       const room = {
-        code: String(meta.code || '').toUpperCase(),
+        code,
         host: String(meta.host || this.myName()).slice(0, 12),
         diff: meta.diff || 'hard',
-        status: meta.status || 'open',
-        players: meta.players | 0 || 1,
+        status: players >= MAX_ROOM_PLAYERS ? 'full' : meta.status || 'open',
+        players,
         ts: Date.now(),
       };
       await firestoreUpsertRoom(room);
@@ -740,17 +758,18 @@
     async setRoomStatus(code, status, players) {
       const c = String(code || this.roomCode || '').toUpperCase();
       if (!c) return;
+      const p = players != null ? players : this.guestCount() + 1;
       const room = {
         code: c,
         host: (this.publishedRoom && this.publishedRoom.host) || this.myName(),
         diff: (this.publishedRoom && this.publishedRoom.diff) || this._pendingDiff || 'hard',
-        status: status || 'open',
-        players: players != null ? players : status === 'full' || status === 'playing' ? 2 : 1,
-        ts: (this.publishedRoom && this.publishedRoom.ts) || Date.now(),
+        status: status || (p >= MAX_ROOM_PLAYERS ? 'full' : 'open'),
+        players: Math.min(MAX_ROOM_PLAYERS, Math.max(1, p)),
+        ts: Date.now(), // refresh TTL so room stays visible
       };
       try {
         if (status === 'playing') {
-          await firestoreDeleteRoom(c); // free slot when match starts
+          await firestoreDeleteRoom(c);
           this.publishedRoom = null;
         } else {
           await firestoreUpsertRoom(room);
@@ -759,6 +778,16 @@
       } catch (e) {
         console.warn('setRoomStatus', e);
       }
+    },
+
+    guestCount() {
+      return (this.conns || []).filter((c) => c && c.open).length;
+    },
+
+    lobbyList() {
+      const list = [{ id: 'host', name: this.myName(), role: 'host' }];
+      (this.lobbyGuests || []).forEach((g) => list.push({ id: g.id, name: g.name, role: 'guest' }));
+      return list;
     },
 
     async unpublishRoom(code) {
@@ -770,7 +799,7 @@
       if (this.publishedRoom && this.publishedRoom.code === c) this.publishedRoom = null;
     },
 
-    /* ───────── PEER VS ───────── */
+    /* ───────── PEER SQUAD SURVIVAL (2–4 players) ───────── */
     ensurePeerScript() {
       return new Promise((resolve, reject) => {
         if (global.Peer) return resolve();
@@ -789,18 +818,28 @@
       return c;
     },
 
+    resetLobbyState() {
+      this.conns = [];
+      this.lobbyGuests = [];
+      this.guestInputs = {}; // id -> last input
+      this._slotSeq = 0;
+      this.conn = null;
+      this.opp = { name: '—', score: 0, waveScore: 0, lives: 3, kills: 0, ready: false, dead: false };
+      this._matchStarted = false;
+      this._helloOk = false;
+      this.meReady = false;
+      this.lastWorld = null;
+      this.lastGuestInput = { L: 0, R: 0, shoot: 0, special: 0, x: 0, y: 0, seq: 0, id: 'g0' };
+    },
+
     async hostRoom() {
       await this.ensurePeerScript();
-      this.destroyPeer();
+      this.destroyPeer(true);
+      this.resetLobbyState();
       this.role = 'host';
       this.roomCode = this.genCode();
       this.status = 'hosting';
-      this.ready = false;
-      this.meReady = false;
-      this._matchStarted = false;
-      this._helloOk = false;
       this._pendingDiff = 'hard';
-      this.opp = { name: 'OPP', score: 0, waveScore: 0, lives: 3, kills: 0, ready: false, dead: false };
 
       return new Promise((resolve, reject) => {
         const id = PEER_PREFIX + this.roomCode;
@@ -814,30 +853,36 @@
           reject(err);
         });
         this.peer.on('connection', (conn) => {
-          if (this.conn && this.conn.open) {
+          if (this._matchStarted) {
             conn.close();
             return;
           }
-          this.conn = conn;
-          this.wireConn(conn);
+          if (this.guestCount() >= MAX_ROOM_PLAYERS - 1) {
+            try {
+              conn.on('open', () => {
+                conn.send({ t: 'room_full' });
+                setTimeout(() => conn.close(), 200);
+              });
+            } catch (e) {
+              conn.close();
+            }
+            return;
+          }
+          this.wireHostConn(conn);
         });
       });
     },
 
     async joinRoom(code) {
       await this.ensurePeerScript();
-      this.destroyPeer();
+      this.destroyPeer(true);
+      this.resetLobbyState();
       this.role = 'guest';
       this.roomCode = String(code || '')
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, '')
         .slice(0, 6);
       this.status = 'joining';
-      this.ready = false;
-      this.meReady = false;
-      this._matchStarted = false;
-      this._helloOk = false;
-      this.opp = { name: 'HOST', score: 0, waveScore: 0, lives: 3, kills: 0, ready: false, dead: false };
 
       return new Promise((resolve, reject) => {
         this.peer = new Peer(undefined, { debug: 1 });
@@ -849,7 +894,7 @@
           const conn = this.peer.connect(PEER_PREFIX + this.roomCode, { reliable: true });
           this.conn = conn;
           conn.on('open', () => {
-            this.wireConn(conn);
+            this.wireGuestConn(conn);
             this.status = 'connected';
             this.send({ t: 'hello', name: this.myName() });
             settled = true;
@@ -882,83 +927,145 @@
       }
     },
 
-    wireConn(conn) {
-      const onOpen = () => {
+    wireHostConn(conn) {
+      const slot = 'g' + this._slotSeq++;
+      conn._muzzId = slot;
+      const attach = () => {
+        if (!this.conns.includes(conn)) this.conns.push(conn);
         this.status = 'connected';
-        if (this.role === 'host') this.send({ t: 'hello', name: this.myName() });
+        this.sendTo(conn, {
+          t: 'hello_ack',
+          name: this.myName(),
+          id: slot,
+          lobby: this.lobbyList(),
+        });
+        this.broadcast({ t: 'lobby', lobby: this.lobbyList() });
+        this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
         if (this.onConnect) this.onConnect();
         if (this.onLobby) this.onLobby();
       };
-      conn.on('data', (msg) => this.handleMsg(msg));
+      conn.on('data', (msg) => this.handleMsg(msg, conn));
+      conn.on('close', () => {
+        this.conns = this.conns.filter((c) => c !== conn);
+        this.lobbyGuests = this.lobbyGuests.filter((g) => g.id !== slot);
+        delete this.guestInputs[slot];
+        this.setRoomStatus(this.roomCode, 'open', this.guestCount() + 1);
+        this.broadcast({ t: 'lobby', lobby: this.lobbyList() });
+        if (this.onLobby) this.onLobby();
+        if (!this.guestCount() && !this._matchStarted) this.status = 'waiting';
+      });
+      if (conn.open) attach();
+      else conn.on('open', attach);
+    },
+
+    wireGuestConn(conn) {
+      conn.on('data', (msg) => this.handleMsg(msg, conn));
       conn.on('close', () => {
         this.status = 'disconnected';
         this.vsActive = false;
-        if (typeof Toast !== 'undefined') Toast.show('OPPONENT DISCONNECTED', 'pink');
+        if (typeof Toast !== 'undefined') Toast.show('HOST DISCONNECTED', 'pink');
         if (this.onDisconnect) this.onDisconnect();
       });
-      conn.on('error', () => {
-        this.status = 'error';
-        if (this.onLobby) this.onLobby();
-      });
-      // Critical: wait until data channel is open (host race fix)
-      if (conn.open) onOpen();
-      else conn.on('open', onOpen);
+      if (this.onConnect) this.onConnect();
+      if (this.onLobby) this.onLobby();
     },
 
-    /** Host starts match once (auto after hello, or manual READY) */
+    sendTo(conn, obj) {
+      if (conn && conn.open) {
+        try {
+          conn.send(obj);
+        } catch (e) {}
+      }
+    },
+
+    broadcast(obj) {
+      (this.conns || []).forEach((c) => this.sendTo(c, obj));
+      // also keep primary conn alias for first guest
+      if (this.conn && this.conn.open && !(this.conns || []).includes(this.conn)) this.sendTo(this.conn, obj);
+    },
+
+    /** Host starts when ≥1 guest (2 pilots) — squad survival */
     beginMatch(diff) {
       if (this._matchStarted) return false;
       if (this.role !== 'host') return false;
-      if (!this.conn || !this.conn.open) return false;
+      if (this.guestCount() < 1) return false;
       this._matchStarted = true;
       this.vsActive = true;
       const seed = (Math.random() * 1e9) | 0;
       const d = diff || this._pendingDiff || 'hard';
-      this.setRoomStatus(this.roomCode, 'playing', 2); // frees global slot
-      this.send({ t: 'start', seed, diff: d, mode: 'survival' });
-      if (this.onStart) this.onStart({ seed, diff: d, mode: 'survival' });
+      const lobby = this.lobbyList();
+      this.setRoomStatus(this.roomCode, 'playing', this.guestCount() + 1);
+      this.broadcast({ t: 'start', seed, diff: d, mode: 'survival', lobby });
+      if (this.onStart) this.onStart({ seed, diff: d, mode: 'survival', lobby });
       return true;
     },
 
-    handleMsg(msg) {
+    handleMsg(msg, conn) {
       if (!msg || !msg.t) return;
       switch (msg.t) {
         case 'hello':
-          this.opp.name = msg.name || 'OPP';
-          this._helloOk = true;
-          this.send({ t: 'hello_ack', name: this.myName() });
-          if (this.onLobby) this.onLobby();
-          // Host: mark room full, then auto-start
-          if (this.role === 'host') {
-            this.setRoomStatus(this.roomCode, 'full', 2);
-            setTimeout(() => {
-              if (!this._matchStarted) this.beginMatch(this._pendingDiff);
-            }, 700);
+          if (this.role === 'host' && conn) {
+            const id = conn._muzzId || 'g0';
+            const name = String(msg.name || 'PILOT').slice(0, 12);
+            if (!this.lobbyGuests.find((g) => g.id === id)) this.lobbyGuests.push({ id, name });
+            else this.lobbyGuests.forEach((g) => { if (g.id === id) g.name = name; });
+            this.opp.name = this.lobbyGuests[0] ? this.lobbyGuests[0].name : name;
+            this._helloOk = true;
+            this.sendTo(conn, { t: 'hello_ack', name: this.myName(), id, lobby: this.lobbyList() });
+            this.broadcast({ t: 'lobby', lobby: this.lobbyList() });
+            this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
+            if (this.onLobby) this.onLobby();
+            // Auto-start only when room is full (4) — otherwise host presses FIGHT
+            if (this.guestCount() + 1 >= MAX_ROOM_PLAYERS) {
+              setTimeout(() => {
+                if (!this._matchStarted) this.beginMatch(this._pendingDiff);
+              }, 900);
+            }
           }
           break;
         case 'hello_ack':
           this.opp.name = msg.name || this.opp.name;
+          this.mySlot = msg.id || this.mySlot;
           this._helloOk = true;
+          if (msg.lobby) this._remoteLobby = msg.lobby;
+          if (this.onLobby) this.onLobby();
+          break;
+        case 'lobby':
+          this._remoteLobby = msg.lobby || [];
+          if (this.onLobby) this.onLobby();
+          break;
+        case 'room_full':
+          if (typeof Toast !== 'undefined') Toast.show('ROOM FULL (4)', 'pink');
+          this.status = 'error';
           if (this.onLobby) this.onLobby();
           break;
         case 'ready':
-          this.opp.ready = true;
           if (msg.diff) this._pendingDiff = msg.diff;
-          if (this.onLobby) this.onLobby();
-          if (this.role === 'host' && (this.meReady || this.opp.ready)) {
-            this.beginMatch(msg.diff || this._pendingDiff);
+          if (this.role === 'host') {
+            const id = (conn && conn._muzzId) || 'g0';
+            this.lobbyGuests.forEach((g) => {
+              if (g.id === id) g.ready = true;
+            });
+            if (this.meReady || this.guestCount() >= 1) {
+              // host pressed ready earlier or guest ready with host wanting start
+            }
+            if (this.meReady) this.beginMatch(msg.diff || this._pendingDiff);
           }
+          if (this.onLobby) this.onLobby();
           break;
         case 'start':
           if (this._matchStarted) break;
           this._matchStarted = true;
           this.vsActive = true;
-          if (this.onStart) this.onStart({ seed: msg.seed, diff: msg.diff || 'hard', mode: msg.mode || 'survival' });
+          if (msg.lobby) this._remoteLobby = msg.lobby;
+          if (this.onStart)
+            this.onStart({ seed: msg.seed, diff: msg.diff || 'hard', mode: msg.mode || 'survival', lobby: msg.lobby });
           break;
         case 'input':
-          // Host receives guest controls
           if (this.role === 'host') {
-            this.lastGuestInput = {
+            const id = (conn && conn._muzzId) || msg.id || 'g0';
+            const inp = {
+              id,
               L: !!msg.L,
               R: !!msg.R,
               shoot: !!msg.shoot,
@@ -967,11 +1074,13 @@
               y: +msg.y || 0,
               seq: msg.seq | 0,
             };
-            if (this.onInput) this.onInput(this.lastGuestInput);
+            this.guestInputs[id] = inp;
+            // compat: first guest also lastGuestInput
+            if (!this.lobbyGuests.length || this.lobbyGuests[0].id === id) this.lastGuestInput = inp;
+            if (this.onInput) this.onInput(inp);
           }
           break;
         case 'world':
-          // Guest receives authoritative arena
           if (this.role === 'guest') {
             this.lastWorld = msg;
             if (msg.me) {
@@ -988,14 +1097,6 @@
         case 'evt':
           if (this.onEvt) this.onEvt(msg);
           break;
-        case 'sync':
-          // legacy thin sync (keep for safety)
-          this.opp.score = msg.score | 0;
-          this.opp.waveScore = msg.waveScore | 0;
-          this.opp.lives = msg.lives | 0;
-          this.opp.dead = !!msg.dead;
-          if (this.onSync) this.onSync(this.opp);
-          break;
         case 'end':
           this.opp.score = msg.score | 0;
           this.opp.waveScore = msg.waveScore | 0;
@@ -1010,7 +1111,8 @@
     },
 
     send(obj) {
-      if (this.conn && this.conn.open) {
+      if (this.role === 'host') this.broadcast(obj);
+      else if (this.conn && this.conn.open) {
         try {
           this.conn.send(obj);
         } catch (e) {}
@@ -1021,20 +1123,17 @@
       this.meReady = true;
       this._pendingDiff = diff || 'hard';
       this.send({ t: 'ready', diff: this._pendingDiff, name: this.myName() });
-      if (this.role === 'host') {
-        // Host can force start on READY once connected
-        if (this.status === 'connected' || this.opp.ready || this._helloOk) {
-          this.beginMatch(this._pendingDiff);
-        }
+      if (this.role === 'host' && this.guestCount() >= 1) {
+        this.beginMatch(this._pendingDiff);
       }
     },
 
-    /** Guest → Host controls (~20 Hz) */
     sendInput(input) {
       if (!this.vsActive || this.role !== 'guest') return;
       this.inputSeq = (this.inputSeq + 1) | 0;
       this.send({
         t: 'input',
+        id: this.mySlot || 'g0',
         L: !!input.L,
         R: !!input.R,
         shoot: !!input.shoot,
@@ -1045,15 +1144,14 @@
       });
     },
 
-    /** Host → Guest full arena snapshot (~15–20 Hz) */
     sendWorld(world) {
       if (!this.vsActive || this.role !== 'host') return;
-      this.send(Object.assign({ t: 'world' }, world));
+      this.broadcast(Object.assign({ t: 'world' }, world));
     },
 
     sendEvt(evt) {
       if (!this.vsActive) return;
-      this.send(Object.assign({ t: 'evt' }, evt));
+      this.broadcast(Object.assign({ t: 'evt' }, evt));
     },
 
     syncState(state) {
@@ -1079,17 +1177,25 @@
       });
     },
 
-    destroyPeer() {
+    destroyPeer(skipUnpublish) {
       const code = this.roomCode || (this.publishedRoom && this.publishedRoom.code);
-      if (code && this.role === 'host' && !this._matchStarted) {
+      if (!skipUnpublish && code && this.role === 'host' && !this._matchStarted) {
         this.unpublishRoom(code);
       }
+      (this.conns || []).forEach((c) => {
+        try {
+          c.close();
+        } catch (e) {}
+      });
       try {
         if (this.conn) this.conn.close();
       } catch (e) {}
       try {
         if (this.peer) this.peer.destroy();
       } catch (e) {}
+      this.conns = [];
+      this.lobbyGuests = [];
+      this.guestInputs = {};
       this.conn = null;
       this.peer = null;
       this.vsActive = false;
@@ -1101,6 +1207,8 @@
       this.lastGuestInput = { L: 0, R: 0, shoot: 0, special: 0, x: 0, y: 0, seq: 0 };
     },
   };
+
+  Online.MAX_PLAYERS = MAX_ROOM_PLAYERS;
 
   global.Online = Online;
   global.MUZZ_GLOBAL_LB = GLOBAL_FIRESTORE_URL;

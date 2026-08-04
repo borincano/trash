@@ -35,7 +35,7 @@ service cloud.firestore {
         request.resource.data.host.size() <= 12 &&
         request.resource.data.players is int &&
         request.resource.data.players >= 1 &&
-        request.resource.data.players <= 2 &&
+        request.resource.data.players <= 4 &&
         request.resource.data.status in ['open', 'full', 'playing'];
       allow delete: if true;
     }
