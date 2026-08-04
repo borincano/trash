@@ -378,7 +378,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
         <div class="mc-badge">ONLINE</div>
         <div class="mc-ico">⚔</div>
         <div class="mc-t">SUPER SURVIVAL</div>
-        <div class="mc-d">Same arena · aliens + PvP · 2 ships</div>
+        <div class="mc-d">Create room · up to 4 pilots</div>
       </div>
       <div class="mode-card" id="modeRank">
         <div class="mc-ico">🌐</div>
@@ -473,42 +473,45 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   </div>
 </div>
 
-<!-- VS LOBBY -->
+<!-- VS LOBBY (kept for back-compat; main hub is pageVsRooms) -->
 <div class="page" id="pageVs">
   <div class="page-head"><button class="back-btn" data-back>‹</button><h2>SUPER SURVIVAL</h2></div>
   <div class="page-body">
-    <p style="font-size:.9rem;color:var(--muted);line-height:1.5;margin-bottom:12px">
-      <b style="color:var(--m)">Squad survival</b> · up to <b style="color:var(--y)">4 pilots</b> in one arena · shared aliens.
-      Create a room or browse open rooms (max 10 global).
-    </p>
-    <div class="section-h"><h3>YOUR CALLSIGN</h3><span id="vsName">PILOT</span></div>
-    <div class="set-row"><span>DIFFICULTY</span>
-      <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
-    </div>
-    <button class="btn cyan" id="vsHostBtn" type="button" style="width:100%;margin:12px 0">CREATE ROOM</button>
-    <button class="btn pink" id="vsBrowseBtn" type="button" style="width:100%;margin-bottom:12px">BROWSE ROOMS</button>
-    <div class="section-h"><h3>OR JOIN BY CODE</h3></div>
-    <input class="input" id="vsJoinInput" maxlength="6" placeholder="ENTER CODE" style="margin-bottom:8px;letter-spacing:.2em">
-    <button class="btn gold" id="vsJoinBtn" type="button" style="width:100%;margin-bottom:8px">JOIN CODE</button>
-    <div class="chip" id="vsStatus">Create or browse rooms</div>
+    <p style="font-size:.9rem;color:var(--muted);margin-bottom:12px">Squad survival · up to 4 pilots.</p>
+    <button class="btn cyan" id="vsGoRooms" type="button" style="width:100%;margin:8px 0;padding:1rem;font-size:.85rem">▶ OPEN ROOMS HUB</button>
+    <div class="chip" id="vsStatus">Tap to create or join rooms</div>
   </div>
 </div>
 
-<!-- VS ROOMS BROWSER -->
+<!-- VS ROOMS HUB — create + list -->
 <div class="page" id="pageVsRooms">
-  <div class="page-head"><button class="back-btn" data-back data-vs-rooms-back>‹</button><h2>VS ROOMS</h2></div>
+  <div class="page-head"><button class="back-btn" data-back data-vs-rooms-back>‹</button><h2>⚔ VS ROOMS</h2></div>
   <div class="page-body">
-    <div class="section-h"><h3>OPEN ROOMS</h3><button class="btn sm cyan" id="roomsRefresh" type="button">REFRESH</button></div>
-    <div class="chip" id="roomsStatus" style="margin-bottom:10px">Loading…</div>
-    <div id="roomsList"></div>
-    <div id="roomsMineBox" style="display:none;margin-top:16px;padding:12px;border:1px solid rgba(0,232,255,.35);border-radius:12px;background:rgba(0,232,255,.06)">
-      <div style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--c);letter-spacing:.1em;margin-bottom:6px">YOUR ROOM</div>
+    <div style="padding:12px;margin-bottom:14px;border:1px solid rgba(0,232,255,.4);border-radius:12px;background:linear-gradient(160deg,rgba(0,232,255,.12),rgba(255,45,155,.08))">
+      <div class="section-h" style="margin:0 0 8px"><h3>CREATE</h3><span id="vsName">PILOT</span></div>
+      <div class="set-row" style="margin-bottom:10px"><span>DIFFICULTY</span>
+        <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
+      </div>
+      <button class="btn cyan" id="vsHostBtn" type="button" style="width:100%;padding:1rem;font-size:.85rem;letter-spacing:.18em">＋ CREATE ROOM</button>
+      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">Opens a global room (max 10 · 4 players)</div>
+    </div>
+
+    <div id="roomsMineBox" style="display:none;margin-bottom:14px;padding:12px;border:1px solid rgba(255,208,0,.4);border-radius:12px;background:rgba(255,208,0,.08)">
+      <div style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">YOUR ROOM · WAITING</div>
       <div id="vsCodeBox" style="font-family:Orbitron,sans-serif;font-size:1.5rem;letter-spacing:.25em;text-align:center;color:var(--y);margin-bottom:8px">— — — — —</div>
       <div id="vsLobbyInfo" style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,232,255,.75);line-height:1.55;margin-bottom:10px"></div>
       <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-bottom:8px" disabled>FIGHT · START</button>
       <button class="btn grey" id="vsCancelBtn" type="button" style="width:100%">CLOSE ROOM</button>
     </div>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Global · <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">4</b> players / room</p>
+
+    <div class="section-h"><h3>OPEN ROOMS</h3><button class="btn sm cyan" id="roomsRefresh" type="button">REFRESH</button></div>
+    <div class="chip" id="roomsStatus" style="margin-bottom:10px">Loading…</div>
+    <div id="roomsList"></div>
+
+    <div class="section-h" style="margin-top:16px"><h3>JOIN BY CODE</h3></div>
+    <input class="input" id="vsJoinInput" maxlength="6" placeholder="ENTER CODE" style="margin-bottom:8px;letter-spacing:.2em">
+    <button class="btn pink" id="vsJoinBtn" type="button" style="width:100%;margin-bottom:8px">JOIN CODE</button>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:12px;line-height:1.4;text-align:center">Global · <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">4</b> players / room</p>
   </div>
 </div>
 
@@ -2861,6 +2864,9 @@ function updateVsStatus(){
     error:'Connection error'
   };
   if(st) st.textContent=map[Online.status]||Online.status;
+  if($('roomsCreateStatus')&&Online.role==='host'&&Online.roomCode){
+    $('roomsCreateStatus').textContent='Hosting '+Online.roomCode+' · '+(Online.guestCount()+1)+'/4';
+  }
   if(Online.roomCode&&$('vsCodeBox'))$('vsCodeBox').textContent=Online.roomCode.split('').join(' ');
   if(info){
     const lobby=Online.role==='host'?Online.lobbyList():(Online._remoteLobby||[]);
@@ -3037,7 +3043,7 @@ function wireUI(){
   $('modeEndless').onclick=()=>Game.start({mode:'endless',diff:$('setDiff').value});
   $('modeDaily').onclick=()=>{if(Meta.dailyDone){Toast.show('DAILY ALREADY CLEARED');return;}Game.start({mode:'daily',diff:'hard',daily:true,theme:hashStr(todayKey())%THEMES.length});};
   $('modeEvent').onclick=()=>Game.start({mode:'event',diff:'nightmare',theme:9});
-  $('modeVs').onclick=()=>showPage('pageVs','home');
+  $('modeVs').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
   $('modeRank').onclick=()=>showPage('pageRank','social');
 
   // VS Super Survival + room browser
@@ -3100,56 +3106,57 @@ function wireUI(){
       if(GS.mode==='vs'&&Engine.running&&!GS.vsEnded) Game.endVs('disconnect');
     };
   };
-  $('vsHostBtn').onclick=async()=>{
+  async function createVsRoom(){
+    const st=$('roomsCreateStatus')||$('vsStatus')||$('roomsStatus');
     try{
+      if(st) st.textContent='Creating room…';
       wireVsNet();
-      $('vsStatus').textContent='Creating room…';
-      // Pre-check global cap
       const open=await Online.listRooms();
-      if(open.length>=Online.MAX_ROOMS){
+      if(open.length>=(Online.MAX_ROOMS||10)){
         Toast.show('ROOMS FULL (10)','pink');
-        $('vsStatus').textContent='Global rooms full — try later';
-        showPage('pageVsRooms','home');
-        startRoomsPoll();
+        if(st) st.textContent='Global rooms full — try later';
+        renderRoomsList();
         return;
       }
       const code=await Online.hostRoom();
       await Online.publishRoom({
         code,
         host:Meta.callsign||'PILOT',
-        diff:$('vsDiff').value||'hard',
+        diff:($('vsDiff')&&$('vsDiff').value)||'hard',
         status:'open',
         players:1
       });
       if($('vsCodeBox'))$('vsCodeBox').textContent=code.split('').join(' ');
-      Toast.show('ROOM '+code,'ok');
+      if($('roomsMineBox'))$('roomsMineBox').style.display='block';
+      Toast.show('ROOM '+code+' CREATED','ok');
+      if(st) st.textContent='Room '+code+' · waiting for squad…';
       updateVsStatus();
       showPage('pageVsRooms','home');
       startRoomsPoll();
       renderRoomsList();
     }catch(e){
+      console.error(e);
       Toast.show(String(e.message||'HOST FAILED').slice(0,40),'pink');
-      if($('vsStatus'))$('vsStatus').textContent=String(e.message||e);
+      if(st) st.textContent=String(e.message||e);
       try{Online.destroyPeer();}catch(_){}
     }
-  };
-  $('vsBrowseBtn').onclick=()=>{
-    showPage('pageVsRooms','home');
-    startRoomsPoll();
-    renderRoomsList();
-  };
-  $('vsJoinBtn').onclick=async()=>{
-    const code=$('vsJoinInput').value.trim();
+  }
+  if($('vsHostBtn'))$('vsHostBtn').onclick=()=>createVsRoom();
+  if($('vsGoRooms'))$('vsGoRooms').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
+  if($('vsBrowseBtn'))$('vsBrowseBtn').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
+  if($('vsJoinBtn'))$('vsJoinBtn').onclick=async()=>{
+    const code=($('vsJoinInput')&&$('vsJoinInput').value||'').trim();
     if(code.length<4){Toast.show('ENTER CODE');return;}
     try{
       wireVsNet();
-      $('vsStatus').textContent='Joining…';
+      if($('roomsStatus'))$('roomsStatus').textContent='Joining…';
       await Online.joinRoom(code);
       Toast.show('JOINED '+Online.roomCode,'ok');
       updateVsStatus();
       showPage('pageVsRooms','home');
       startRoomsPoll();
-    }catch(e){Toast.show('JOIN FAILED','pink');$('vsStatus').textContent=String(e.message||e);}
+      renderRoomsList();
+    }catch(e){Toast.show('JOIN FAILED','pink');if($('roomsStatus'))$('roomsStatus').textContent=String(e.message||e);}
   };
   if($('roomsRefresh'))$('roomsRefresh').onclick=()=>renderRoomsList();
   if($('vsReadyBtn'))$('vsReadyBtn').onclick=()=>{
