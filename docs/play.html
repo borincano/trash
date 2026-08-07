@@ -483,35 +483,30 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   </div>
 </div>
 
-<!-- VS ROOMS HUB — create + list -->
+<!-- VS ROOMS HUB — create + list only (no room codes) -->
 <div class="page" id="pageVsRooms">
   <div class="page-head"><button class="back-btn" data-back data-vs-rooms-back>‹</button><h2>⚔ VS ROOMS</h2></div>
   <div class="page-body">
     <div style="padding:12px;margin-bottom:14px;border:1px solid rgba(0,232,255,.4);border-radius:12px;background:linear-gradient(160deg,rgba(0,232,255,.12),rgba(255,45,155,.08))">
-      <div class="section-h" style="margin:0 0 8px"><h3>CREATE</h3><span id="vsName">PILOT</span></div>
+      <div class="section-h" style="margin:0 0 8px"><h3>HOST A SQUAD</h3><span id="vsName">PILOT</span></div>
       <div class="set-row" style="margin-bottom:10px"><span>DIFFICULTY</span>
         <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
       </div>
       <button class="btn cyan" id="vsHostBtn" type="button" style="width:100%;padding:1rem;font-size:.85rem;letter-spacing:.18em">＋ CREATE ROOM</button>
-      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">Opens a global room (max 10 · 4 players)</div>
+      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">Up to 4 pilots · shared survival arena</div>
     </div>
 
     <div id="roomsMineBox" style="display:none;margin-bottom:14px;padding:12px;border:1px solid rgba(255,208,0,.4);border-radius:12px;background:rgba(255,208,0,.08)">
-      <div style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">YOUR ROOM · WAITING</div>
-      <div id="vsCodeBox" style="font-family:Orbitron,sans-serif;font-size:1.5rem;letter-spacing:.25em;text-align:center;color:var(--y);margin-bottom:8px">— — — — —</div>
+      <div style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">YOUR SQUAD · LIVE</div>
       <div id="vsLobbyInfo" style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,232,255,.75);line-height:1.55;margin-bottom:10px"></div>
       <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-bottom:8px" disabled>FIGHT · START</button>
       <button class="btn grey" id="vsCancelBtn" type="button" style="width:100%">CLOSE ROOM</button>
     </div>
 
-    <div class="section-h"><h3>OPEN ROOMS</h3><button class="btn sm cyan" id="roomsRefresh" type="button">REFRESH</button></div>
+    <div class="section-h"><h3>AVAILABLE ROOMS</h3><button class="btn sm cyan" id="roomsRefresh" type="button">REFRESH</button></div>
     <div class="chip" id="roomsStatus" style="margin-bottom:10px">Loading…</div>
     <div id="roomsList"></div>
-
-    <div class="section-h" style="margin-top:16px"><h3>JOIN BY CODE</h3></div>
-    <input class="input" id="vsJoinInput" maxlength="6" placeholder="ENTER CODE" style="margin-bottom:8px;letter-spacing:.2em">
-    <button class="btn pink" id="vsJoinBtn" type="button" style="width:100%;margin-bottom:8px">JOIN CODE</button>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:12px;line-height:1.4;text-align:center">Global · <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">4</b> players / room</p>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Tap a room to join · Max <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">4</b> players each</p>
   </div>
 </div>
 
@@ -2867,12 +2862,11 @@ function updateVsStatus(){
   if($('roomsCreateStatus')&&Online.role==='host'&&Online.roomCode){
     $('roomsCreateStatus').textContent='Hosting '+Online.roomCode+' · '+(Online.guestCount()+1)+'/4';
   }
-  if(Online.roomCode&&$('vsCodeBox'))$('vsCodeBox').textContent=Online.roomCode.split('').join(' ');
   if(info){
     const lobby=Online.role==='host'?Online.lobbyList():(Online._remoteLobby||[]);
     const names=lobby.length?lobby.map(p=>p.name).join(', '):(Online.opp.name||'waiting…');
     const n=Online.role==='host'?(Online.guestCount()+1):(lobby.length||1);
-    info.innerHTML=`SQUAD (${n}/4): <b style="color:var(--c)">${names}</b><br>ROLE: ${(Online.role||'—').toUpperCase()}${Online._matchStarted?' · STARTING':''}<br>${Online.role==='host'?'Press FIGHT when ready (min 2)':'Waiting for host…'}`;
+    info.innerHTML=`SQUAD <b style="color:var(--y)">${n}/4</b><br>PILOTS: <b style="color:var(--c)">${names}</b><br>${Online.role==='host'?(Online._matchStarted?'STARTING…':'Press FIGHT when ready (min 2)'):'In lobby — wait for host'}`;
   }
   if(mine){
     const show=Online.role==='host'&&(Online.status==='waiting'||Online.status==='connected'||Online.status==='hosting');
@@ -2892,11 +2886,14 @@ async function renderRoomsList(){
   try{
     const rooms=await Online.listRooms();
     const n=rooms.length;
-    if(st) st.textContent=`${n} / 10 rooms open`;
+    if(st){
+      if(Online.lastRoomsError) st.textContent='Network issue — pull REFRESH';
+      else st.textContent=n?`${n} room${n>1?'s':''} available`:'No rooms — create one';
+    }
     if(!n){
       const empty=document.createElement('div');
-      empty.style.cssText='padding:16px;text-align:center;color:var(--muted);font-size:.85rem';
-      empty.textContent='No open rooms — create one';
+      empty.style.cssText='padding:18px;text-align:center;color:var(--muted);font-size:.85rem;line-height:1.5';
+      empty.textContent='No open squads right now.\nTap CREATE ROOM above.';
       list.appendChild(empty);
       return;
     }
@@ -2904,14 +2901,16 @@ async function renderRoomsList(){
       const row=document.createElement('div');
       row.className='list-row';
       row.style.cursor='pointer';
+      row.style.marginBottom='8px';
       const mine=Online.roomCode&&Online.roomCode===r.code;
-      const maxP=Online.MAX_PLAYERS||4;
-      const full=r.players>=maxP||r.status==='full';
-      row.innerHTML=`<div class="lr-l"><div class="lr-t">${mine?'★ ':''}${r.code}</div><div class="lr-s">${r.host} · ${(r.diff||'hard').toUpperCase()} · ${r.players||1}/${maxP}</div></div><div class="lr-r" style="color:${full?'var(--muted)':'var(--c)'}">${full?'FULL':'JOIN'}</div>`;
+      const maxP=r.maxPlayers||Online.MAX_PLAYERS||4;
+      const full=(r.players|0)>=maxP||r.status==='full';
+      const title=(r.title||(r.host+' SQUAD')).slice(0,22);
+      row.innerHTML=`<div class="lr-l"><div class="lr-t">${mine?'★ ':''}${title}</div><div class="lr-s">Host ${r.host} · ${(r.diff||'hard').toUpperCase()} · ${r.players||1}/${maxP}</div></div><div class="lr-r" style="color:${full?'var(--muted)':mine?'var(--y)':'var(--c)'}">${mine?'YOURS':full?'FULL':'JOIN'}</div>`;
       if(!full&&!mine){
-        row.onclick=()=>joinListedRoom(r.code,r.diff);
+        row.onclick=()=>joinListedRoom(r);
       } else if(mine){
-        row.style.borderColor='rgba(0,232,255,.45)';
+        row.style.borderColor='rgba(0,232,255,.5)';
       }
       list.appendChild(row);
     });
@@ -2920,18 +2919,22 @@ async function renderRoomsList(){
   }
 }
 let wireVsNet=function(){}; // set in wireUI
-async function joinListedRoom(code,diff){
+async function joinListedRoom(room){
   try{
     wireVsNet();
-    if($('vsStatus'))$('vsStatus').textContent='Joining '+code+'…';
-    if($('roomsStatus'))$('roomsStatus').textContent='Joining '+code+'…';
-    await Online.joinRoom(code);
-    if(diff&&$('vsDiff'))$('vsDiff').value=diff;
-    Toast.show('JOINED '+code,'ok');
+    const label=(room&&room.title)||(room&&room.host)||'room';
+    if($('roomsStatus'))$('roomsStatus').textContent='Joining '+label+'…';
+    Toast.show('JOINING…','ok');
+    await Online.joinRoom(room);
+    if(room.diff&&$('vsDiff'))$('vsDiff').value=room.diff;
+    Toast.show('JOINED SQUAD','ok');
     updateVsStatus();
+    renderRoomsList();
   }catch(e){
+    console.error(e);
     Toast.show('JOIN FAILED','pink');
-    if($('roomsStatus'))$('roomsStatus').textContent=String(e.message||e);
+    if($('roomsStatus'))$('roomsStatus').textContent=String(e.message||e).slice(0,48);
+    renderRoomsList();
   }
 }
 
@@ -3107,9 +3110,11 @@ function wireUI(){
     };
   };
   async function createVsRoom(){
-    const st=$('roomsCreateStatus')||$('vsStatus')||$('roomsStatus');
+    const st=$('roomsCreateStatus')||$('roomsStatus');
+    const btn=$('vsHostBtn');
     try{
-      if(st) st.textContent='Creating room…';
+      if(btn) btn.disabled=true;
+      if(st) st.textContent='Creating squad room…';
       wireVsNet();
       const open=await Online.listRooms();
       if(open.length>=(Online.MAX_ROOMS||10)){
@@ -3118,18 +3123,19 @@ function wireUI(){
         renderRoomsList();
         return;
       }
+      const hostName=Meta.callsign||'PILOT';
       const code=await Online.hostRoom();
       await Online.publishRoom({
         code,
-        host:Meta.callsign||'PILOT',
+        peerId:Online.peerId,
+        host:hostName,
+        title:hostName+' SQUAD',
         diff:($('vsDiff')&&$('vsDiff').value)||'hard',
-        status:'open',
         players:1
       });
-      if($('vsCodeBox'))$('vsCodeBox').textContent=code.split('').join(' ');
       if($('roomsMineBox'))$('roomsMineBox').style.display='block';
-      Toast.show('ROOM '+code+' CREATED','ok');
-      if(st) st.textContent='Room '+code+' · waiting for squad…';
+      Toast.show('SQUAD ROOM LIVE','ok');
+      if(st) st.textContent='Your room is live — wait for pilots (1/4)';
       updateVsStatus();
       showPage('pageVsRooms','home');
       startRoomsPoll();
@@ -3137,37 +3143,23 @@ function wireUI(){
     }catch(e){
       console.error(e);
       Toast.show(String(e.message||'HOST FAILED').slice(0,40),'pink');
-      if(st) st.textContent=String(e.message||e);
+      if(st) st.textContent=String(e.message||e).slice(0,48);
       try{Online.destroyPeer();}catch(_){}
+    }finally{
+      if(btn) btn.disabled=false;
     }
   }
   if($('vsHostBtn'))$('vsHostBtn').onclick=()=>createVsRoom();
   if($('vsGoRooms'))$('vsGoRooms').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
-  if($('vsBrowseBtn'))$('vsBrowseBtn').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
-  if($('vsJoinBtn'))$('vsJoinBtn').onclick=async()=>{
-    const code=($('vsJoinInput')&&$('vsJoinInput').value||'').trim();
-    if(code.length<4){Toast.show('ENTER CODE');return;}
-    try{
-      wireVsNet();
-      if($('roomsStatus'))$('roomsStatus').textContent='Joining…';
-      await Online.joinRoom(code);
-      Toast.show('JOINED '+Online.roomCode,'ok');
-      updateVsStatus();
-      showPage('pageVsRooms','home');
-      startRoomsPoll();
-      renderRoomsList();
-    }catch(e){Toast.show('JOIN FAILED','pink');if($('roomsStatus'))$('roomsStatus').textContent=String(e.message||e);}
-  };
   if($('roomsRefresh'))$('roomsRefresh').onclick=()=>renderRoomsList();
   if($('vsReadyBtn'))$('vsReadyBtn').onclick=()=>{
-    Online.setReady($('vsDiff').value);
+    Online.setReady($('vsDiff')?$('vsDiff').value:'hard');
     updateVsStatus();
     Toast.show(Online.role==='host'?'STARTING…':'READY','ok');
   };
   if($('vsCancelBtn'))$('vsCancelBtn').onclick=async()=>{
     await Online.unpublishRoom();
     Online.destroyPeer();
-    if($('vsCodeBox'))$('vsCodeBox').textContent='— — — — —';
     vsLaunching=false;
     updateVsStatus();
     renderRoomsList();

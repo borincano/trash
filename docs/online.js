@@ -256,25 +256,34 @@
     if (!doc || !doc.fields) return null;
     const f = doc.fields;
     const id = (doc.name || '').split('/').pop();
+    const code = String(fieldVal(f.code) || id || '').toUpperCase();
+    const peerId = String(fieldVal(f.peerId) || PEER_PREFIX + code);
     return {
       id: id,
-      code: String(fieldVal(f.code) || id || '').toUpperCase(),
+      code: code,
+      peerId: peerId,
       host: String(fieldVal(f.host) || 'HOST').slice(0, 12),
+      title: String(fieldVal(f.title) || (fieldVal(f.host) || 'SQUAD') + ' SQUAD').slice(0, 24),
       diff: String(fieldVal(f.diff) || 'hard'),
       status: String(fieldVal(f.status) || 'open'),
       players: Number(fieldVal(f.players) || 1) | 0,
+      maxPlayers: Number(fieldVal(f.maxPlayers) || MAX_ROOM_PLAYERS) | 0 || MAX_ROOM_PLAYERS,
       ts: Number(fieldVal(f.ts) || 0),
     };
   }
 
   function roomToBody(room) {
+    const code = String(room.code || '').toUpperCase();
     return {
       fields: {
-        code: { stringValue: String(room.code || '').toUpperCase() },
+        code: { stringValue: code },
+        peerId: { stringValue: String(room.peerId || PEER_PREFIX + code) },
         host: { stringValue: String(room.host || 'HOST').slice(0, 12) },
+        title: { stringValue: String(room.title || room.host || 'SQUAD').slice(0, 24) },
         diff: { stringValue: String(room.diff || 'hard') },
         status: { stringValue: String(room.status || 'open') },
         players: { integerValue: String(room.players | 0) },
+        maxPlayers: { integerValue: String(room.maxPlayers || MAX_ROOM_PLAYERS) },
         ts: { integerValue: String(room.ts | 0) },
       },
     };
@@ -296,28 +305,32 @@
     return data.documents || [];
   }
 
+  const ROOM_MASK =
+    '?updateMask.fieldPaths=code&updateMask.fieldPaths=peerId&updateMask.fieldPaths=host&updateMask.fieldPaths=title&updateMask.fieldPaths=diff&updateMask.fieldPaths=status&updateMask.fieldPaths=players&updateMask.fieldPaths=maxPlayers&updateMask.fieldPaths=ts';
+
   async function firestoreUpsertRoom(room) {
     const code = String(room.code || '').toUpperCase();
     const body = JSON.stringify(roomToBody(room));
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-    // Prefer POST create (reliable), then PATCH update
-    let res = await fetch(withKey(ROOMS_URL + '?documentId=' + encodeURIComponent(code), ''), {
-      method: 'POST',
+    // PATCH first (create-or-update style when exists), else POST
+    let res = await fetch(withKey(ROOMS_URL + '/' + encodeURIComponent(code) + ROOM_MASK, ''), {
+      method: 'PATCH',
       headers,
       body,
     });
-    if (res.status === 409 || res.status === 400) {
-      // already exists → patch
-      res = await fetch(
-        withKey(
-          ROOMS_URL +
-            '/' +
-            encodeURIComponent(code) +
-            '?updateMask.fieldPaths=code&updateMask.fieldPaths=host&updateMask.fieldPaths=diff&updateMask.fieldPaths=status&updateMask.fieldPaths=players&updateMask.fieldPaths=ts',
-          ''
-        ),
-        { method: 'PATCH', headers, body }
-      );
+    if (res.status === 404) {
+      res = await fetch(withKey(ROOMS_URL + '?documentId=' + encodeURIComponent(code), ''), {
+        method: 'POST',
+        headers,
+        body,
+      });
+    }
+    if (res.status === 409) {
+      res = await fetch(withKey(ROOMS_URL + '/' + encodeURIComponent(code) + ROOM_MASK, ''), {
+        method: 'PATCH',
+        headers,
+        body,
+      });
     }
     if (!res.ok) {
       const t = await res.text().catch(() => '');
@@ -699,7 +712,7 @@
       saveCfg(this.cfg);
     },
 
-    /* ───────── GLOBAL ROOM BROWSER (max 10) ───────── */
+    /* ───────── GLOBAL ROOM BROWSER (max 10) — list only, no codes shown ───────── */
     async listRooms() {
       const now = Date.now();
       let docs = [];
@@ -714,14 +727,21 @@
       const rooms = docs.map(roomFromDoc).filter(Boolean);
       const live = [];
       for (const r of rooms) {
-        const ts = r.ts > 0 ? r.ts : now;
+        // Ignore invalid/stale timestamps without mass-deleting on clock skew
+        const ts = r.ts > 1e12 ? r.ts : now;
         const age = now - ts;
-        if (r.status === 'playing' || age > ROOM_TTL_MS) {
+        if (r.status === 'playing') {
+          firestoreDeleteRoom(r.code).catch(() => {});
+          continue;
+        }
+        if (age > ROOM_TTL_MS && r.ts > 1e12) {
           firestoreDeleteRoom(r.code).catch(() => {});
           continue;
         }
         if (r.status === 'open' || r.status === 'full' || !r.status) {
           r.players = Math.min(MAX_ROOM_PLAYERS, Math.max(1, (r.players | 0) || 1));
+          r.maxPlayers = r.maxPlayers || MAX_ROOM_PLAYERS;
+          r.title = r.title || r.host + ' SQUAD';
           live.push(r);
         }
       }
@@ -736,39 +756,69 @@
       } catch (e) {
         open = [];
       }
-      const code = String(meta.code || '').toUpperCase();
+      const code = String(meta.code || this.roomCode || '').toUpperCase();
+      if (!code) throw new Error('No room id');
       const others = open.filter((r) => r.code !== code);
       if (others.length >= MAX_GLOBAL_ROOMS) {
         throw new Error('GLOBAL FULL · max ' + MAX_GLOBAL_ROOMS + ' rooms');
       }
+      const host = String(meta.host || this.myName()).slice(0, 12);
       const players = Math.min(MAX_ROOM_PLAYERS, Math.max(1, (meta.players | 0) || 1));
       const room = {
         code,
-        host: String(meta.host || this.myName()).slice(0, 12),
+        peerId: meta.peerId || this.peerId || PEER_PREFIX + code,
+        host,
+        title: String(meta.title || host + ' SQUAD').slice(0, 24),
         diff: meta.diff || 'hard',
-        status: players >= MAX_ROOM_PLAYERS ? 'full' : meta.status || 'open',
+        status: players >= MAX_ROOM_PLAYERS ? 'full' : 'open',
         players,
+        maxPlayers: MAX_ROOM_PLAYERS,
         ts: Date.now(),
       };
       await firestoreUpsertRoom(room);
       this.publishedRoom = room;
+      this.startRoomHeartbeat();
       return room;
+    },
+
+    startRoomHeartbeat() {
+      this.stopRoomHeartbeat();
+      this._roomBeat = setInterval(() => {
+        if (!this.publishedRoom || this._matchStarted) {
+          this.stopRoomHeartbeat();
+          return;
+        }
+        const p = this.guestCount() + 1;
+        this.setRoomStatus(this.roomCode, p >= MAX_ROOM_PLAYERS ? 'full' : 'open', p);
+      }, 8000);
+    },
+
+    stopRoomHeartbeat() {
+      if (this._roomBeat) {
+        clearInterval(this._roomBeat);
+        this._roomBeat = null;
+      }
     },
 
     async setRoomStatus(code, status, players) {
       const c = String(code || this.roomCode || '').toUpperCase();
       if (!c) return;
       const p = players != null ? players : this.guestCount() + 1;
+      const prev = this.publishedRoom || {};
       const room = {
         code: c,
-        host: (this.publishedRoom && this.publishedRoom.host) || this.myName(),
-        diff: (this.publishedRoom && this.publishedRoom.diff) || this._pendingDiff || 'hard',
+        peerId: prev.peerId || this.peerId || PEER_PREFIX + c,
+        host: prev.host || this.myName(),
+        title: prev.title || this.myName() + ' SQUAD',
+        diff: prev.diff || this._pendingDiff || 'hard',
         status: status || (p >= MAX_ROOM_PLAYERS ? 'full' : 'open'),
         players: Math.min(MAX_ROOM_PLAYERS, Math.max(1, p)),
-        ts: Date.now(), // refresh TTL so room stays visible
+        maxPlayers: MAX_ROOM_PLAYERS,
+        ts: Date.now(),
       };
       try {
         if (status === 'playing') {
+          this.stopRoomHeartbeat();
           await firestoreDeleteRoom(c);
           this.publishedRoom = null;
         } else {
@@ -791,6 +841,7 @@
     },
 
     async unpublishRoom(code) {
+      this.stopRoomHeartbeat();
       const c = String(code || this.roomCode || (this.publishedRoom && this.publishedRoom.code) || '').toUpperCase();
       if (!c) return;
       try {
@@ -832,23 +883,49 @@
       this.lastGuestInput = { L: 0, R: 0, shoot: 0, special: 0, x: 0, y: 0, seq: 0, id: 'g0' };
     },
 
+    peerOptions() {
+      // Public PeerJS cloud — works on HTTPS (web + Capacitor)
+      return {
+        host: '0.peerjs.com',
+        port: 443,
+        path: '/',
+        secure: true,
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+          ],
+        },
+      };
+    },
+
     async hostRoom() {
       await this.ensurePeerScript();
       this.destroyPeer(true);
       this.resetLobbyState();
       this.role = 'host';
       this.roomCode = this.genCode();
+      this.peerId = PEER_PREFIX + this.roomCode;
       this.status = 'hosting';
       this._pendingDiff = 'hard';
 
       return new Promise((resolve, reject) => {
-        const id = PEER_PREFIX + this.roomCode;
-        this.peer = new Peer(id, { debug: 1 });
-        this.peer.on('open', () => {
+        this.peer = new Peer(this.peerId, this.peerOptions());
+        const failTimer = setTimeout(() => {
+          if (this.status === 'hosting') {
+            this.status = 'error';
+            reject(new Error('Host peer timeout — check internet'));
+          }
+        }, 20000);
+        this.peer.on('open', (id) => {
+          clearTimeout(failTimer);
+          this.peerId = id || this.peerId;
           this.status = 'waiting';
           resolve(this.roomCode);
         });
         this.peer.on('error', (err) => {
+          clearTimeout(failTimer);
           this.status = 'error';
           reject(err);
         });
@@ -860,7 +937,9 @@
           if (this.guestCount() >= MAX_ROOM_PLAYERS - 1) {
             try {
               conn.on('open', () => {
-                conn.send({ t: 'room_full' });
+                try {
+                  conn.send({ t: 'room_full' });
+                } catch (e) {}
                 setTimeout(() => conn.close(), 200);
               });
             } catch (e) {
@@ -873,39 +952,57 @@
       });
     },
 
-    async joinRoom(code) {
+    /** Join from room list object (preferred) or raw code/peerId */
+    async joinRoom(codeOrRoom) {
       await this.ensurePeerScript();
       this.destroyPeer(true);
       this.resetLobbyState();
       this.role = 'guest';
-      this.roomCode = String(code || '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
-        .slice(0, 6);
       this.status = 'joining';
 
+      let code = '';
+      let targetPeer = '';
+      if (codeOrRoom && typeof codeOrRoom === 'object') {
+        code = String(codeOrRoom.code || codeOrRoom.id || '').toUpperCase();
+        targetPeer = codeOrRoom.peerId || PEER_PREFIX + code;
+        this._joinDiff = codeOrRoom.diff;
+      } else {
+        code = String(codeOrRoom || '')
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '')
+          .slice(0, 8);
+        targetPeer = PEER_PREFIX + code;
+      }
+      this.roomCode = code;
+      if (!code || !targetPeer) throw new Error('Invalid room');
+
       return new Promise((resolve, reject) => {
-        this.peer = new Peer(undefined, { debug: 1 });
+        this.peer = new Peer(undefined, this.peerOptions());
         let settled = false;
         const failTimer = setTimeout(() => {
-          if (!settled && this.status === 'joining') reject(new Error('Room timeout — check code / internet'));
-        }, 15000);
+          if (!settled) {
+            settled = true;
+            reject(new Error('Cannot join — host offline or room expired'));
+          }
+        }, 20000);
         this.peer.on('open', () => {
-          const conn = this.peer.connect(PEER_PREFIX + this.roomCode, { reliable: true });
+          const conn = this.peer.connect(targetPeer, { reliable: true, serialization: 'json' });
           this.conn = conn;
           conn.on('open', () => {
             this.wireGuestConn(conn);
             this.status = 'connected';
             this.send({ t: 'hello', name: this.myName() });
-            settled = true;
-            clearTimeout(failTimer);
-            resolve(this.roomCode);
+            if (!settled) {
+              settled = true;
+              clearTimeout(failTimer);
+              resolve(this.roomCode);
+            }
           });
           conn.on('error', (err) => {
             if (!settled) {
               settled = true;
               clearTimeout(failTimer);
-              reject(err);
+              reject(err.type ? new Error('Join failed: ' + err.type) : err);
             }
           });
         });
@@ -913,7 +1010,7 @@
           if (!settled) {
             settled = true;
             clearTimeout(failTimer);
-            reject(err);
+            reject(err.type ? new Error('Peer error: ' + err.type) : err);
           }
         });
       });
@@ -1178,6 +1275,7 @@
     },
 
     destroyPeer(skipUnpublish) {
+      this.stopRoomHeartbeat();
       const code = this.roomCode || (this.publishedRoom && this.publishedRoom.code);
       if (!skipUnpublish && code && this.role === 'host' && !this._matchStarted) {
         this.unpublishRoom(code);

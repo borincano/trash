@@ -30,7 +30,7 @@ service cloud.firestore {
         request.resource.data.keys().hasAll(['code', 'host', 'diff', 'status', 'players', 'ts']) &&
         request.resource.data.code is string &&
         request.resource.data.code.size() >= 4 &&
-        request.resource.data.code.size() <= 6 &&
+        request.resource.data.code.size() <= 12 &&
         request.resource.data.host is string &&
         request.resource.data.host.size() <= 12 &&
         request.resource.data.players is int &&
