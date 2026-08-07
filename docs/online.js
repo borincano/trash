@@ -18,7 +18,8 @@
   const FIRESTORE_PROFILES = 'muzzgalaxy_profiles';
   const MAX_GLOBAL_ROOMS = 10;
   const MAX_ROOM_PLAYERS = 4; // host + up to 3 guests — squad survival
-  const ROOM_TTL_MS = 12 * 60 * 1000; // stale rooms auto-drop from list
+  // Room vanishes if no host heartbeat for this long (host offline / empty)
+  const ROOM_TTL_MS = 60 * 1000;
   const GLOBAL_FIRESTORE_URL =
     'https://firestore.googleapis.com/v1/projects/' +
     FIRESTORE_PROJECT +
@@ -727,14 +728,10 @@
       const rooms = docs.map(roomFromDoc).filter(Boolean);
       const live = [];
       for (const r of rooms) {
-        // Ignore invalid/stale timestamps without mass-deleting on clock skew
-        const ts = r.ts > 1e12 ? r.ts : now;
-        const age = now - ts;
-        if (r.status === 'playing') {
-          firestoreDeleteRoom(r.code).catch(() => {});
-          continue;
-        }
-        if (age > ROOM_TTL_MS && r.ts > 1e12) {
+        const ts = r.ts > 1e12 ? r.ts : 0;
+        const age = ts ? now - ts : ROOM_TTL_MS + 1;
+        // Playing, empty, or no host heartbeat for 1 min → delete
+        if (r.status === 'playing' || (r.players | 0) <= 0 || age > ROOM_TTL_MS) {
           firestoreDeleteRoom(r.code).catch(() => {});
           continue;
         }
@@ -783,14 +780,20 @@
 
     startRoomHeartbeat() {
       this.stopRoomHeartbeat();
+      // Keep room listed only while host is online (refresh every 15s; TTL = 60s)
       this._roomBeat = setInterval(() => {
-        if (!this.publishedRoom || this._matchStarted) {
+        if (!this.publishedRoom || this._matchStarted || this.role !== 'host') {
           this.stopRoomHeartbeat();
           return;
         }
-        const p = this.guestCount() + 1;
+        if (this.status === 'disconnected' || this.status === 'idle' || this.status === 'error') {
+          this.unpublishRoom(this.roomCode);
+          this.stopRoomHeartbeat();
+          return;
+        }
+        const p = Math.max(1, this.guestCount() + 1);
         this.setRoomStatus(this.roomCode, p >= MAX_ROOM_PLAYERS ? 'full' : 'open', p);
-      }, 8000);
+      }, 15000);
     },
 
     stopRoomHeartbeat() {
