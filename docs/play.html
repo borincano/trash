@@ -1485,17 +1485,19 @@ function continuousSpawn(){
   if(!GS.assaultActive||GS.waveState!=='active') return;
   if(isVsGuest()) return; // host-authoritative arena
   const p=assaultPower();
-  // hard cap on live enemies for performance + chaos
-  const cap=Math.min(18+GS.wave*2+GS.rampTier*3, 48);
+  // VS: lower enemy cap for smoother live multiplayer
+  const cap=isVs()?Math.min(14+GS.rampTier,22):Math.min(18+GS.wave*2+GS.rampTier*3,48);
   if(GS.enemies.length>=cap) return;
-  const n=Math.min(p.batch, cap-GS.enemies.length);
+  let batch=p.batch;
+  if(isVs()) batch=Math.min(batch,2);
+  const n=Math.min(batch, cap-GS.enemies.length);
   for(let i=0;i<n;i++){
     const kind=pickKind(GS.wave+GS.rampTier);
     spawnEnemy({
       kind,
       pattern:pickPattern(GS.wave+GS.rampTier, kind),
-      elite:Math.random()<p.eliteChance,
-      shooter:Math.random()<p.shooterChance,
+      elite:Math.random()<(isVs()?p.eliteChance*.7:p.eliteChance),
+      shooter:Math.random()<(isVs()?p.shooterChance*.75:p.shooterChance),
     });
   }
   // boss event once per wave on boss waves at ~20s remaining or when ramp mid
@@ -1862,6 +1864,9 @@ function initVsArena(){
   }
   GS.pvpHits=0; GS.vsEnded=false; GS._nid=1;
   BG.set((Math.random()*THEMES.length)|0);
+  NetFX.lastTMs=0; NetFX.syncMs=90; NetFX.lagSamples=[]; NetFX.applyHudT=0;
+  // Lighter FX online for FPS headroom
+  if(Quality.particles>0.5) Quality.particles=0.45;
   if(typeof Online!=='undefined'){Online.vsActive=true;Online._worldAcc=0;Online._inputAcc=0;}
 }
 function applyShipMove(ship,left,right,dt,spdMul){
@@ -1912,74 +1917,133 @@ function damageVsShip(who, fromPvp){
   }
   updateVsHud();
 }
+/* Netcode tuning for variable latency */
+const NetFX={
+  lastTMs:0,
+  syncMs:90, // adaptive 70–140
+  lagSamples:[],
+  applyHudT:0,
+  q(n){return (n+.5)|0;}, // quantize
+};
 function packVsWorld(){
-  const mates=(GS.mates&&GS.mates.length?GS.mates:(GS.opp?[GS.opp]:[])).map(m=>({
-    id:m.id||'g0',name:m.name||'P',x:m.x|0,y:m.y|0,lives:m.lives|0,inv:m.invuln|0,
-    kills:m.kills|0,score:m.score|0,dead:!!m.dead
-  }));
-  const o=mates[0]||GS.opp||{};
-  const enemies=GS.enemies.slice(0,40).map(e=>[e.nid|0,e.x|0,e.y|0,e.hp|0,e.kind||'scout',e.elite?1:0,e.isBoss?1:0,e.w|0,e.h|0,e.maxHp|0]);
-  const pBullets=GS.bullets.slice(0,50).map(b=>[b.x|0,b.y|0,b.vx|0,b.vy|0,b.owner==='host'?0:1,b.w|0,b.h|0]);
-  const eBullets=GS.eBullets.slice(0,40).map(b=>[b.x|0,b.y|0,b.vx|0,b.vy|0,b.r|0]);
+  // Compact snapshots — fewer entities = smoother live play
+  const ships=[['host',(Meta.callsign||'P').slice(0,8),NetFX.q(GS.posX),NetFX.q(GS.posY),GS.lives|0,GS.kills|0,GS.lives<=0?1:0]];
+  (GS.mates&&GS.mates.length?GS.mates:(GS.opp?[GS.opp]:[])).slice(0,3).forEach(m=>{
+    ships.push([m.id||'g0',(m.name||'P').slice(0,8),NetFX.q(m.x),NetFX.q(m.y),m.lives|0,m.kills|0,m.dead?1:0]);
+  });
+  const enemies=GS.enemies.slice(0,18).map(e=>[
+    e.nid|0, NetFX.q(e.x), NetFX.q(e.y), e.hp|0, e.kind||'scout', e.elite?1:0, e.isBoss?1:0, NetFX.q(e.w||32)
+  ]);
+  const pBullets=GS.bullets.slice(0,22).map(b=>[
+    NetFX.q(b.x), NetFX.q(b.y), NetFX.q(b.vx/10), NetFX.q(b.vy/10), b.owner==='host'?0:1
+  ]);
+  const eBullets=GS.eBullets.slice(0,16).map(b=>[
+    NetFX.q(b.x), NetFX.q(b.y), NetFX.q(b.vx/10), NetFX.q(b.vy/10)
+  ]);
   return {
+    t:'world',
     tMs:performance.now()|0,
-    me:{x:GS.posX|0,y:GS.posY|0,lives:GS.lives|0,inv:GS.invuln|0,score:GS.score|0,kills:GS.kills|0,waveScore:GS.waveScore|0,dead:GS.lives<=0,name:Meta.callsign||'PILOT',ship:Meta.ship},
-    you:{x:o.x|0,y:o.y|0,lives:o.lives|0,inv:o.inv|0||o.invuln|0,score:o.score|0,kills:o.kills|0,waveScore:o.waveScore|0,dead:!!o.dead,name:o.name||'OPP'},
-    mates,
-    enemies,pBullets,eBullets,
-    wave:GS.wave,waveTime:GS.waveTime|0,waveScore:GS.waveScore|0,ramp:GS.rampTier|0,goal:GS.waveGoal|0,
-    score:GS.score|0
+    ships, enemies, pb:pBullets, eb:eBullets,
+    wt:GS.waveTime|0, ws:GS.waveScore|0, r:GS.rampTier|0, sc:GS.score|0, w:GS.wave|0
   };
 }
 function applyVsWorld(w){
   if(!w||!isVsGuest())return;
-  // Host ship → local opp
-  if(w.me){
-    GS.opp=GS.opp||{};
-    GS.opp.x=w.me.x;GS.opp.y=w.me.y;GS.opp.lives=w.me.lives;GS.opp.invuln=w.me.inv;
-    GS.opp.kills=w.me.kills;GS.opp.score=w.me.score;GS.opp.waveScore=w.me.waveScore;
-    GS.opp.dead=!!w.me.dead;GS.opp.name=w.me.name||GS.opp.name;GS.opp.size=GS.size||playerSize();
-    GS.opp.shipId=w.me.ship||GS.opp.shipId;
+  // Only apply each packet once (was re-applying every frame — main lag source)
+  const tMs=w.tMs|0;
+  if(tMs && tMs===NetFX.lastTMs) return;
+  if(tMs){
+    if(NetFX.lastTMs){
+      const gap=tMs-NetFX.lastTMs;
+      if(gap>0&&gap<500){
+        NetFX.lagSamples.push(gap);
+        if(NetFX.lagSamples.length>12) NetFX.lagSamples.shift();
+        const avg=NetFX.lagSamples.reduce((a,b)=>a+b,0)/NetFX.lagSamples.length;
+        // Adaptive host-facing hint stored for guest extrapolation only
+        NetFX.syncMs=clamp(avg*0.9,70,140);
+      }
+    }
+    NetFX.lastTMs=tMs;
   }
-  // Soft reconcile guest (local) ship from authority
-  if(w.you){
-    const tx=w.you.x,ty=w.you.y;
-    GS.posX=GS.posX*.55+tx*.45;
+  const sz=GS.size||playerSize();
+  const ships=w.ships||[];
+  const myId=Online.mySlot||'g0';
+  // Soft reconcile this guest from ships[]
+  const self=ships.find(s=>s&&s[0]===myId);
+  if(self){
+    const tx=self[2], ty=self[3];
+    if(Math.abs(tx-GS.posX)>48) GS.posX=tx;
+    else GS.posX=GS.posX*.8+tx*.2;
     GS.posY=ty;
-    GS.lives=w.you.lives;GS.invuln=w.you.inv;GS.kills=w.you.kills;
-    GS.score=Math.max(GS.score,w.you.score|0);GS.waveScore=w.you.waveScore|0;
-    UI.lives();UI.score();
+    if(self[4]!=null){ GS.lives=self[4]; }
+    GS.kills=self[5]|0;
+  } else if(w.you){
+    // legacy packet shape
+    const tx=w.you[0], ty=w.you[1];
+    if(Math.abs(tx-GS.posX)>48) GS.posX=tx; else GS.posX=GS.posX*.8+tx*.2;
+    GS.posY=ty; GS.lives=w.you[2]|0; GS.kills=w.you[3]|0;
   }
-  GS.wave=w.wave||GS.wave;GS.waveTime=w.waveTime;GS.waveGoal=w.goal||GS.waveGoal;GS.rampTier=w.ramp|0;
-  // Rebuild enemies from snapshot
-  const base=playerSize();
+  GS.wave=w.w||GS.wave; GS.waveTime=w.wt; GS.waveScore=w.ws|0; GS.rampTier=w.r|0; GS.score=Math.max(GS.score,w.sc|0);
+  // Enemies: merge by nid when possible (less GC)
+  const base=sz;
+  const prev=new Map();
+  (GS.enemies||[]).forEach(e=>{if(e.nid) prev.set(e.nid,e);});
   GS.enemies=(w.enemies||[]).map(a=>{
-    const kind=a[4]||'scout';const def=ENEMY_KINDS[kind]||ENEMY_KINDS.scout;
-    const isBoss=!!a[6];const elite=!!a[5];
-    const w0=a[7]||base*(def.size||1);const h0=a[8]||w0;
-    return {nid:a[0],x:a[1],y:a[2],hp:a[3],maxHp:a[9]||a[3],kind,elite,isBoss,w:w0,h:h0,age:0,flash:0,pattern:'sine',spdMul:1,pts:10,shooter:false,shootCD:9999,phase:1,zig:0,name:isBoss?'BOSS':(def.label||kind)};
+    const nid=a[0]|0;
+    const old=prev.get(nid);
+    const kind=a[4]||'scout';
+    const def=ENEMY_KINDS[kind]||ENEMY_KINDS.scout;
+    const ww=a[7]||base*(def.size||1);
+    if(old){
+      old.x=a[1]; old.y=a[2]; old.hp=a[3]; old.kind=kind; old.elite=!!a[5]; old.isBoss=!!a[6];
+      old.w=ww; old.h=ww; old._net=true;
+      return old;
+    }
+    return {nid,x:a[1],y:a[2],hp:a[3],maxHp:a[3],kind,elite:!!a[5],isBoss:!!a[6],w:ww,h:ww,age:0,flash:0,pattern:'hold',spdMul:1,pts:10,shooter:false,shootCD:99999,phase:1,zig:0,name:a[6]?'BOSS':(def.label||kind),_net:true};
   });
   GS.boss=GS.enemies.find(e=>e.isBoss)||null;
-  if(GS.boss)UI.boss(true,GS.boss.hp,GS.boss.maxHp,1,GS.boss.name);else UI.boss(false);
-  GS.bullets=(w.pBullets||[]).map(a=>({x:a[0],y:a[1],vx:a[2],vy:a[3],owner:a[4]? 'guest':'host',w:a[5]||4,h:a[6]||18,col:a[4]?'#ff2d9b':'#00e8ff',pierce:0,dmg:1}));
-  GS.eBullets=(w.eBullets||[]).map(a=>({x:a[0],y:a[1],vx:a[2],vy:a[3],r:a[4]||4,col:'#ff6a00'}));
-  // Squad ships (host + other guests)
-  if(w.mates&&w.mates.length){
-    GS.mates=w.mates.map(m=>({
-      id:m.id, name:m.name, x:m.x, y:m.y, size:GS.size, lives:m.lives, invuln:m.inv,
-      kills:m.kills, score:m.score, dead:!!m.dead, lastShot:0, shipId:Meta.ship
-    }));
-    // Host is me from world
-    GS.mates.unshift({
-      id:'host', name:(w.me&&w.me.name)||'HOST', x:w.me.x, y:w.me.y, size:GS.size,
-      lives:w.me.lives, invuln:w.me.inv, kills:w.me.kills, score:w.me.score, dead:!!w.me.dead, shipId:w.me.ship||Meta.ship
-    });
-    // Remove self from mates if present
-    const myId=Online.mySlot;
-    GS.mates=GS.mates.filter(m=>m.id!==myId);
-    GS.opp=GS.mates[0]||GS.opp;
+  // Bullets with velocity for local extrapolation
+  GS.bullets=(w.pb||w.pBullets||[]).map(a=>({
+    x:a[0],y:a[1],vx:(a[2]|0)*10,vy:(a[3]|0)*10,
+    owner:a[4]?'guest':'host',w:4,h:16,col:a[4]?'#ff2d9b':'#00e8ff',pierce:0,dmg:1,_net:true
+  }));
+  GS.eBullets=(w.eb||w.eBullets||[]).map(a=>({
+    x:a[0],y:a[1],vx:(a[2]|0)*10,vy:(a[3]|0)*10,r:4,col:'#ff6a00',_net:true
+  }));
+  // Other pilots (not me)
+  GS.mates=ships.filter(s=>s&&s[0]!==myId).map(s=>({
+    id:s[0], name:s[1], x:s[2], y:s[3], size:sz, lives:s[4], kills:s[5], dead:!!s[6], invuln:0, shipId:Meta.ship
+  }));
+  GS.opp=GS.mates[0]||GS.opp;
+  // Throttle HUD DOM (expensive on mobile)
+  const now=performance.now();
+  if(now-NetFX.applyHudT>200){
+    NetFX.applyHudT=now;
+    UI.obj(); updateVsHud(); UI.score();
+    if(GS.boss) UI.boss(true,GS.boss.hp,GS.boss.maxHp||GS.boss.hp,1,GS.boss.name);
+    else UI.boss(false);
   }
-  UI.obj();updateVsHud();
+}
+function extrapolateVsNet(dt){
+  // Smooth motion between snapshots (guest only)
+  const s=dt/1000;
+  for(let i=0;i<GS.enemies.length;i++){
+    const e=GS.enemies[i];
+    if(!e._net) continue;
+    // gentle fall so arena still feels alive between packets
+    e.y+=(40+((e.spdMul||1)*30))*s;
+    e.age=(e.age||0)+dt;
+  }
+  for(let i=GS.bullets.length-1;i>=0;i--){
+    const b=GS.bullets[i]; if(!b._net) continue;
+    b.x+=b.vx*s; b.y+=b.vy*s;
+    if(b.y<-50||b.y>Engine.H+50) GS.bullets.splice(i,1);
+  }
+  for(let i=GS.eBullets.length-1;i>=0;i--){
+    const b=GS.eBullets[i]; if(!b._net) continue;
+    b.x+=b.vx*s; b.y+=b.vy*s;
+    if(b.y>Engine.H+40||b.y<-40) GS.eBullets.splice(i,1);
+  }
 }
 
 const Game={
@@ -2054,14 +2118,24 @@ const Game={
         continuousSpawn();
         GS.spawnCD=assaultPower().spawnMs*(isVs()?0.85:1);
       }
-      UI.obj();
+      if(!isVs()||!this._uiAcc||this._uiAcc>180){UI.obj();this._uiAcc=0;}
+      this._uiAcc=(this._uiAcc||0)+dt;
       if(isVsHost()){
         if(!this._vsSyncT)this._vsSyncT=0;
         this._vsSyncT+=dt;
-        if(this._vsSyncT>55){
+        // Adaptive tick: ~11 Hz default, slower under load
+        const interval=NetFX.syncMs||90;
+        if(this._vsSyncT>=interval){
           this._vsSyncT=0;
+          // Cap bullets on host for net bandwidth
+          if(GS.bullets.length>40) GS.bullets.length=40;
+          if(GS.eBullets.length>28) GS.eBullets.length=28;
           Online.sendWorld(packVsWorld());
-          updateVsHud();
+          if(!this._hudAcc||this._hudAcc>150){updateVsHud();this._hudAcc=0;}
+          this._hudAcc=(this._hudAcc||0)+interval;
+          // Adapt: if many enemies, slow sync slightly
+          const load=GS.enemies.length+GS.bullets.length*.3;
+          NetFX.syncMs=clamp(70+load*1.2,70,130);
         }
       }
       // Super Survival: no early objective end — fight full timer or KO
@@ -2180,20 +2254,30 @@ const Game={
     if(Input.right)GS.posX=Math.min(Engine.W-sz-8,GS.posX+spd);
     if(GS.invuln>0)GS.invuln-=dt;
     if(GS.specialCD>0)GS.specialCD-=dt;
-    $('specialBtn').disabled=GS.specialCD>0;
-    $('dangerVig').style.opacity=GS.lives<=1?.55:GS.lives<=2?.22:0;
-    // send input ~20Hz
+    // send input ~12–15 Hz (enough for feel, less bandwidth)
     if(!this._inAcc)this._inAcc=0;this._inAcc+=dt;
-    if(this._inAcc>50){
+    if(this._inAcc>70){
       this._inAcc=0;
       const special=!!Input.special;if(Input.special)Input.special=false;
       Online.sendInput({L:Input.left,R:Input.right,shoot:Input.shoot,special,x:GS.posX|0,y:GS.posY|0});
+      $('specialBtn').disabled=GS.specialCD>0;
     }
-    if(Online.lastWorld) applyVsWorld(Online.lastWorld);
-    // local visual shoot prediction (host will authoritative overwrite)
-    if(Input.shoot&&GS.lives>0){/* host fires; optional muzzle flash */ if(Math.random()>.92)Particles.emit(GS.posX+sz/2,GS.posY,{n:2,spdMin:20,spdMax:60,colors:['#ff2d9b','#fff'],lifeMin:.05,lifeMax:.15,rMin:1,rMax:2});}
-    if(GS.assaultActive){UI.obj();updateVsHud();}
+    // Apply only NEW world packets (onWorld also calls apply)
+    if(Online.lastWorld && (Online.lastWorld.tMs|0)!==NetFX.lastTMs){
+      applyVsWorld(Online.lastWorld);
+    }
+    // Extrapolate entities between packets for fluid motion
+    extrapolateVsNet(dt);
+    // cheap local muzzle only
+    if(Input.shoot&&GS.lives>0&&Math.random()>.97){
+      Particles.emit(GS.posX+sz/2,GS.posY,{n:1,spdMin:10,spdMax:40,colors:['#ff2d9b'],lifeMin:.05,lifeMax:.12,rMin:1,rMax:2});
+    }
+    if(GS.assaultActive){
+      if(!this._gUi||this._gUi>200){UI.obj();updateVsHud();this._gUi=0;}
+      this._gUi=(this._gUi||0)+dt;
+    }
     if(GS.opp&&GS.opp.invuln>0)GS.opp.invuln-=dt;
+    $('dangerVig').style.opacity=GS.lives<=1?.45:GS.lives<=2?.18:0;
   },
   vsNova(who){
     if(GS.specialCD>0&&who==='local')return;
@@ -3083,7 +3167,7 @@ function wireUI(){
     };
     Online.onLobby=()=>{updateVsStatus();};
     Online.onStart=({seed,diff})=>launchVsMatch({seed,diff});
-    Online.onWorld=(w)=>{applyVsWorld(w);};
+    Online.onWorld=(w)=>{ if(w) applyVsWorld(w); };
     Online.onEvt=(msg)=>{
       if(msg.kind==='end'&&isVsGuest()&&!GS.vsEnded){
         if(msg.reason==='ko_win') Game.endVs('ko_lose');

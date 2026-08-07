@@ -1182,15 +1182,8 @@
           break;
         case 'world':
           if (this.role === 'guest') {
+            // Keep only latest snapshot (drop backlog under lag)
             this.lastWorld = msg;
-            if (msg.me) {
-              this.opp.score = msg.me.score | 0;
-              this.opp.waveScore = msg.me.waveScore | 0;
-              this.opp.lives = msg.me.lives | 0;
-              this.opp.kills = msg.me.kills | 0;
-              this.opp.dead = !!msg.me.dead;
-              this.opp.name = msg.me.name || this.opp.name;
-            }
             if (this.onWorld) this.onWorld(msg);
           }
           break;
@@ -1246,7 +1239,9 @@
 
     sendWorld(world) {
       if (!this.vsActive || this.role !== 'host') return;
-      this.broadcast(Object.assign({ t: 'world' }, world));
+      // packVsWorld already sets t:'world' — send as-is (avoid extra clone cost)
+      if (!world.t) world.t = 'world';
+      this.broadcast(world);
     },
 
     sendEvt(evt) {
