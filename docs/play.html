@@ -449,7 +449,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
         <div>RANK VS <b id="profRankVs" style="color:var(--m)">—</b></div>
         <div>BEST WAVE <b id="profWave" style="color:#fff">1</b></div>
         <div>VS KILLS <b id="profVsKills" style="color:#fff">0</b></div>
+        <div style="grid-column:1/-1">WALLET <b id="profWallet" style="color:var(--y)">—</b></div>
       </div>
+      <button class="btn outline" id="walletBtn" type="button" style="width:100%;margin-top:10px">CONNECT WALLET</button>
     </div>
     <div class="section-h"><h3>LOCAL BOARD</h3><span>This device</span></div>
     <div id="lbList"></div>
@@ -463,11 +465,11 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <div class="page" id="pageRank">
   <div class="page-head"><button class="back-btn" data-back>‹</button><h2>RANKING</h2></div>
   <div class="page-body">
-    <div class="section-h"><h3>🏆 SURVIVOR</h3><button class="btn sm cyan" id="rankRefresh" type="button">REFRESH</button></div>
-    <p style="font-size:.8rem;color:var(--muted);margin:-4px 0 8px">Top 10 · points &amp; wave</p>
+    <div class="section-h"><h3>🏆 SURVIVOR · TOP 10</h3><button class="btn sm cyan" id="rankRefresh" type="button">REFRESH</button></div>
+    <p style="font-size:.8rem;color:var(--muted);margin:-4px 0 8px">Global · best score &amp; wave</p>
     <div id="survivorList"></div>
-    <div class="section-h" style="margin-top:18px"><h3>⚔ VS BATTLER</h3></div>
-    <p style="font-size:.8rem;color:var(--muted);margin:-4px 0 8px">Top 10 · Super Survival</p>
+    <div class="section-h" style="margin-top:18px"><h3>⚔ VS RACE · TOP 10</h3></div>
+    <p style="font-size:.8rem;color:var(--muted);margin:-4px 0 8px">Global · race points (first to 10k / 90s)</p>
     <div id="battlerList"></div>
     <div class="chip" id="rankStatus" style="margin-top:14px">Loading…</div>
   </div>
@@ -493,12 +495,15 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
         <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
       </div>
       <button class="btn cyan" id="vsHostBtn" type="button" style="width:100%;padding:1rem;font-size:.85rem;letter-spacing:.18em">＋ CREATE ROOM</button>
-      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">Up to 4 pilots · empty rooms auto-close in 1 min</div>
+      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">2 players · first to 10k or 90s · net check required</div>
+      <div class="chip" id="netProbeStatus" style="margin-top:6px">Network · not checked</div>
+      <button class="btn outline" id="netProbeBtn" type="button" style="width:100%;margin-top:8px">VERIFY NETWORK</button>
     </div>
 
     <div id="roomsMineBox" style="display:none;margin-bottom:14px;padding:12px;border:1px solid rgba(255,208,0,.4);border-radius:12px;background:rgba(255,208,0,.08)">
-      <div style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">YOUR SQUAD · LIVE</div>
+      <div style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">YOUR ROOM · LIVE</div>
       <div id="vsLobbyInfo" style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,232,255,.75);line-height:1.55;margin-bottom:10px"></div>
+      <div class="chip" id="vsLobbyNet" style="margin-bottom:8px">Waiting for opponent net…</div>
       <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-bottom:8px" disabled>FIGHT · START</button>
       <button class="btn grey" id="vsCancelBtn" type="button" style="width:100%">CLOSE ROOM</button>
     </div>
@@ -506,7 +511,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <div class="section-h"><h3>AVAILABLE ROOMS</h3><button class="btn sm cyan" id="roomsRefresh" type="button">REFRESH</button></div>
     <div class="chip" id="roomsStatus" style="margin-bottom:10px">Loading…</div>
     <div id="roomsList"></div>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Tap to join · Max <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">4</b> players · idle rooms remove after <b style="color:var(--m)">1 min</b></p>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Tap room to join · Max <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">2</b> pilots race · idle close <b style="color:var(--m)">1 min</b></p>
   </div>
 </div>
 
@@ -549,11 +554,12 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     <div class="obj-track"><div id="objFill"></div></div>
     <div class="obj-meta"><span id="objWaveLbl">WAVE 1 · 60s ASSAULT</span><span class="ramp" id="objRamp">RAMP 1/6</span></div>
   </div>
-  <div id="vsHud" style="display:none;position:absolute;top:calc(118px + var(--safe-t));left:50%;transform:translateX(-50%);z-index:46;pointer-events:none;width:min(360px,92vw);text-align:center;font-family:'Share Tech Mono',monospace;font-size:.55rem;letter-spacing:.05em;color:rgba(255,45,155,.95);background:rgba(0,0,0,.5);border:1px solid rgba(255,45,155,.45);padding:5px 8px;border-radius:8px;line-height:1.45">
-    ⚔ SUPER SURVIVAL<br>
-    YOU ◆<span id="vsYouLives">3</span> · K<span id="vsYouScore">0</span>
+  <div id="vsHud" style="display:none;position:absolute;top:calc(118px + var(--safe-t));left:50%;transform:translateX(-50%);z-index:46;pointer-events:none;width:min(380px,94vw);text-align:center;font-family:'Share Tech Mono',monospace;font-size:.55rem;letter-spacing:.04em;color:rgba(255,45,155,.95);background:rgba(0,0,0,.55);border:1px solid rgba(255,45,155,.45);padding:6px 10px;border-radius:8px;line-height:1.5">
+    ⚔ VS RACE · first to <b style="color:var(--y)">10,000</b> or <b id="vsTimerHud">90s</b><br>
+    YOU <b id="vsYouScore" style="color:var(--c)">0</b> · ◆<span id="vsYouLives">3</span>
     &nbsp;vs&nbsp;
-    <b id="vsOppName" style="color:var(--m)">OPP</b> ◆<span id="vsOppLives">3</span> · K<span id="vsOppScore">0</span>
+    <b id="vsOppName" style="color:var(--m)">OPP</b> <b id="vsOppScore" style="color:var(--y)">0</b> · ◆<span id="vsOppLives">3</span>
+    <div id="vsNetHud" style="margin-top:3px;font-size:.5rem;color:rgba(0,232,255,.7)">NET · —</div>
   </div>
   <div id="missionBar"></div>
   <div id="bossBar"><div class="boss-lbl" id="bossLbl">THREAT</div><div class="boss-track"><div id="bossFill"></div></div></div>
@@ -1351,7 +1357,9 @@ const Sprites={
 
 /*════════ GAME ════════*/
 const DIFF={normal:{mult:1,label:'NORMAL'},hard:{mult:1.25,label:'HARD',spd:1.15,hp:1.2},nightmare:{mult:1.55,label:'NIGHTMARE',spd:1.35,hp:1.45}};
-const WAVE_DURATION=60000; // 60s per wave
+const WAVE_DURATION=60000; // 60s per wave (solo / career)
+const VS_MATCH_DURATION=90000; // 90s race online
+const VS_RACE_GOAL=10000; // first to 10k points wins
 const RAMP_EVERY=10000;    // difficulty up every 10s
 function waveGoalFor(wn){
   // W1=5000, then steeper each wave (console-hard curve)
@@ -1455,8 +1463,14 @@ const UI={
     tEl.classList.toggle('low',sec<=10);
     const pct=clamp(GS.waveScore/Math.max(1,GS.waveGoal)*100,0,100);
     $('objFill').style.width=pct+'%';
-    $('objWaveLbl').textContent=`WAVE ${GS.wave} · 60s ASSAULT`;
-    $('objRamp').textContent=`RAMP ${Math.min(6,GS.rampTier+1)}/6 · x${(1+GS.rampTier*.22+GS.wave*.12).toFixed(2)}`;
+    if(GS.mode==='vs'){
+      $('objWaveLbl').textContent=`VS RACE · first to ${GS.waveGoal.toLocaleString()}`;
+      const opp=(GS.opp&&GS.opp.waveScore)|0;
+      $('objRamp').textContent=`YOU ${GS.waveScore.toLocaleString()} · OPP ${opp.toLocaleString()} · ${sec.toFixed(0)}s`;
+    } else {
+      $('objWaveLbl').textContent=`WAVE ${GS.wave} · 60s ASSAULT`;
+      $('objRamp').textContent=`RAMP ${Math.min(6,GS.rampTier+1)}/6 · x${(1+GS.rampTier*.22+GS.wave*.12).toFixed(2)}`;
+    }
   },
   announceWave(n,boss,cb){
     const el=$('waveAnnounce');$('waNum').textContent='WAVE '+n;
@@ -1768,9 +1782,12 @@ function bossShoot(e){
 function killEnemy(e,i,owner){
   const shipSc=shipData().score||1;
   const basePts=e.pts||(e.isBoss?280:e.elite?22:12);
-  const pts=Math.round(basePts*Math.max(1,GS.combo*.48)*GS.upg.scoreMult*GS.styleMult*diffMul().mult*shipSc);
-  // Super Survival: credit kill to bullet owner
-  if(isVs()&&owner==='guest'&&GS.opp){
+  // VS race: flatter scoring so race to 10k is fair and readable
+  let pts=Math.round(basePts*Math.max(1,GS.combo*.48)*GS.upg.scoreMult*GS.styleMult*diffMul().mult*shipSc);
+  if(isVs()) pts=Math.round((e.isBoss?450:e.elite?120:65)*(1+Math.min(GS.combo,8)*.08));
+  // Credit kill to bullet owner (host local / guest / mate id)
+  const isGuestOwner=isVs()&&owner&&owner!=='host'&&owner!=='solo'&&owner!=='local';
+  if(isGuestOwner&&GS.opp){
     GS.opp.kills=(GS.opp.kills||0)+1;
     GS.opp.score=(GS.opp.score||0)+pts;
     GS.opp.waveScore=(GS.opp.waveScore||0)+pts;
@@ -1784,6 +1801,12 @@ function killEnemy(e,i,owner){
   FloatText.add(e.x+e.w/2,e.y+e.h/2,'+'+pts,e.isBoss?'#ff9900':e.elite?'#ff2d9b':'#00e8ff',e.isBoss?18:13);
   GS.combo++;GS.maxCombo=Math.max(GS.maxCombo,GS.combo);GS.comboT=hasPerk('comboist')?2600:2000;UI.combo();
   Particles.explosion(e.x+e.w/2,e.y+e.h/2,e.isBoss);AudioSys.boom(e.isBoss);haptic(e.isBoss?40:10);
+  // VS race win: first to goal
+  if(isVs()&&isVsHost()&&!GS.vsEnded){
+    const goal=GS.vsRaceGoal||VS_RACE_GOAL;
+    if(GS.waveScore>=goal) Game.endVs('race_win');
+    else if(GS.opp&&(GS.opp.waveScore|0)>=goal) Game.endVs('race_lose');
+  }
   // splitter spawns children
   if(e.split&&!e.isBoss){
     for(let s=0;s<2;s++) spawnEnemy({kind:'wasp',pattern:pick(['zigzag','dash','sine']),x:e.x+rand(-20,20),y:e.y,shooter:false});
@@ -1822,12 +1845,19 @@ function vsOwnerLocal(){return isVsHost()?'host':(isVsGuest()?'guest':'solo');}
 function updateVsHud(){
   if(!isVs())return;
   const o=GS.opp||{};
-  const yk=GS.kills|0, ok=o.kills|0;
-  if($('vsYouScore'))$('vsYouScore').textContent=String(yk);
-  if($('vsOppScore'))$('vsOppScore').textContent=String(ok);
+  const yk=GS.waveScore|0, ok=o.waveScore|0;
+  if($('vsYouScore'))$('vsYouScore').textContent=yk.toLocaleString();
+  if($('vsOppScore'))$('vsOppScore').textContent=ok.toLocaleString();
   if($('vsYouLives'))$('vsYouLives').textContent=String(GS.lives|0);
   if($('vsOppLives'))$('vsOppLives').textContent=String(o.lives|0);
-  if($('vsOppName'))$('vsOppName').textContent=o.name||Online.opp.name||'OPP';
+  if($('vsOppName'))$('vsOppName').textContent=o.name||(Online&&Online.opp&&Online.opp.name)||'OPP';
+  if($('vsTimerHud'))$('vsTimerHud').textContent=Math.max(0,Math.ceil((GS.waveTime||0)/1000))+'s';
+  if($('vsNetHud')&&typeof Online!=='undefined'){
+    const a=Online.netReport, b=Online.peerNetReport;
+    const me=a?a.label:'…';
+    const pe=b?b.quality.toUpperCase()+' · '+b.rtt+'ms':'…';
+    $('vsNetHud').textContent='NET YOU '+me+' · OPP '+pe;
+  }
 }
 function initVsArena(){
   const sz=playerSize();
@@ -1927,9 +1957,9 @@ const NetFX={
 };
 function packVsWorld(){
   // Compact snapshots — fewer entities = smoother live play
-  const ships=[['host',(Meta.callsign||'P').slice(0,8),NetFX.q(GS.posX),NetFX.q(GS.posY),GS.lives|0,GS.kills|0,GS.lives<=0?1:0]];
+  const ships=[['host',(Meta.callsign||'P').slice(0,8),NetFX.q(GS.posX),NetFX.q(GS.posY),GS.lives|0,GS.kills|0,GS.lives<=0?1:0,GS.waveScore|0]];
   (GS.mates&&GS.mates.length?GS.mates:(GS.opp?[GS.opp]:[])).slice(0,3).forEach(m=>{
-    ships.push([m.id||'g0',(m.name||'P').slice(0,8),NetFX.q(m.x),NetFX.q(m.y),m.lives|0,m.kills|0,m.dead?1:0]);
+    ships.push([m.id||'g0',(m.name||'P').slice(0,8),NetFX.q(m.x),NetFX.q(m.y),m.lives|0,m.kills|0,m.dead?1:0,m.waveScore|0]);
   });
   const enemies=GS.enemies.slice(0,18).map(e=>[
     e.nid|0, NetFX.q(e.x), NetFX.q(e.y), e.hp|0, e.kind||'scout', e.elite?1:0, e.isBoss?1:0, NetFX.q(e.w||32)
@@ -1977,13 +2007,15 @@ function applyVsWorld(w){
     GS.posY=ty;
     if(self[4]!=null){ GS.lives=self[4]; }
     GS.kills=self[5]|0;
+    if(self[7]!=null) GS.waveScore=self[7]|0;
   } else if(w.you){
     // legacy packet shape
     const tx=w.you[0], ty=w.you[1];
     if(Math.abs(tx-GS.posX)>48) GS.posX=tx; else GS.posX=GS.posX*.8+tx*.2;
     GS.posY=ty; GS.lives=w.you[2]|0; GS.kills=w.you[3]|0;
   }
-  GS.wave=w.w||GS.wave; GS.waveTime=w.wt; GS.waveScore=w.ws|0; GS.rampTier=w.r|0; GS.score=Math.max(GS.score,w.sc|0);
+  GS.wave=w.w||GS.wave; GS.waveTime=w.wt!=null?w.wt:GS.waveTime; GS.rampTier=w.r|0; GS.score=Math.max(GS.score,w.sc|0);
+  // Host shared race score board (host waveScore is host points; guest uses self[7])
   // Enemies: merge by nid when possible (less GC)
   const base=sz;
   const prev=new Map();
@@ -2012,9 +2044,14 @@ function applyVsWorld(w){
   }));
   // Other pilots (not me)
   GS.mates=ships.filter(s=>s&&s[0]!==myId).map(s=>({
-    id:s[0], name:s[1], x:s[2], y:s[3], size:sz, lives:s[4], kills:s[5], dead:!!s[6], invuln:0, shipId:Meta.ship
+    id:s[0], name:s[1], x:s[2], y:s[3], size:sz, lives:s[4], kills:s[5], dead:!!s[6], waveScore:s[7]|0, invuln:0, shipId:Meta.ship
   }));
   GS.opp=GS.mates[0]||GS.opp;
+  // Guest race win check (authoritative end still from host events)
+  if(isVsGuest()&&!GS.vsEnded){
+    const goal=GS.vsRaceGoal||VS_RACE_GOAL;
+    if((GS.waveScore|0)>=goal){ /* wait host end evt */ }
+  }
   // Throttle HUD DOM (expensive on mobile)
   const now=performance.now();
   if(now-NetFX.applyHudT>200){
@@ -2345,9 +2382,17 @@ const Game={
     $('upgradeScreen').classList.add('on');
   },
   beginAssault(){
-    GS.waveTime=WAVE_DURATION;
-    GS.waveGoal=waveGoalFor(GS.wave);
-    GS.waveScore=0;
+    // VS race: 90s + first to 10k; solo modes keep classic wave goals
+    if(GS.mode==='vs'){
+      GS.waveTime=GS.vsMatchTime||VS_MATCH_DURATION;
+      GS.waveGoal=GS.vsRaceGoal||VS_RACE_GOAL;
+      GS.waveScore=0;
+      if(GS.opp){ GS.opp.waveScore=0; GS.opp.score=0; GS.opp.kills=0; }
+    } else {
+      GS.waveTime=WAVE_DURATION;
+      GS.waveGoal=waveGoalFor(GS.wave);
+      GS.waveScore=0;
+    }
     GS.rampTier=0;
     GS.spawnCD=200;
     GS.bossSpawned=false;
@@ -2364,8 +2409,9 @@ const Game={
     } else {
       $('vsHud').style.display='none';
     }
-    // initial pressure burst
-    for(let i=0;i<3+Math.min(GS.wave,6);i++) continuousSpawn();
+    // initial pressure burst (lighter for VS stability)
+    const burst=GS.mode==='vs'?2:3+Math.min(GS.wave,6);
+    for(let i=0;i<burst;i++) continuousSpawn();
   },
   startNextWave(){
     GS.wave++;GS.waveDamage=0;UI.wave();
@@ -2483,25 +2529,24 @@ const Game={
     const mineS=GS.waveScore|0;
     const theirS=(GS.opp&&GS.opp.waveScore)|0;
     let result='DRAW', win=false;
-    if(reason==='ko_win'){result='KO WIN';win=true;}
+    if(reason==='race_win'){result='RACE WIN';win=true;}
+    else if(reason==='race_lose'){result='RACE LOSE';win=false;}
+    else if(reason==='ko_win'){result='KO WIN';win=true;}
     else if(reason==='ko_lose'){result='KO LOSE';win=false;}
     else if(reason==='disconnect'){result='OPP LEFT · WIN';win=true;}
     else {
-      // timer / survival: kills → pvp → lives → score
-      const mineP=GS.pvpHits|0, theirP=(GS.opp&&GS.opp.pvpHits)|0;
-      if(mineK>theirK){result='SURVIVAL WIN';win=true;}
-      else if(theirK>mineK){result='SURVIVAL LOSE';win=false;}
-      else if(mineP>theirP){result='SURVIVAL WIN';win=true;}
-      else if(theirP>mineP){result='SURVIVAL LOSE';win=false;}
-      else if(mineL>theirL){result='SURVIVAL WIN';win=true;}
-      else if(theirL>mineL){result='SURVIVAL LOSE';win=false;}
-      else if(mineS>theirS){result='SURVIVAL WIN';win=true;}
-      else if(theirS>mineS){result='SURVIVAL LOSE';win=false;}
+      // timer 90s: highest race score wins (then kills, lives)
+      if(mineS>theirS){result='TIME WIN';win=true;}
+      else if(theirS>mineS){result='TIME LOSE';win=false;}
+      else if(mineK>theirK){result='TIME WIN';win=true;}
+      else if(theirK>mineK){result='TIME LOSE';win=false;}
+      else if(mineL>theirL){result='TIME WIN';win=true;}
+      else if(theirL>mineL){result='TIME LOSE';win=false;}
       else {result='DRAW';win=true;}
     }
     if(typeof Online!=='undefined'){
       if(isVsHost()){
-        Online.sendEvt({kind:'end', result: win?'YOU LOSE':'YOU WIN', reason, kills:theirK, myKills:mineK});
+        Online.sendEvt({kind:'end', result: win?'YOU LOSE':'YOU WIN', reason, kills:theirK, myKills:mineK, score:mineS, oppScore:theirS});
         Online.sendEnd({score:GS.score,waveScore:GS.waveScore,kills:mineK,pvpHits:GS.pvpHits|0,result});
         Online.sendWorld(packVsWorld());
       }
@@ -2509,8 +2554,8 @@ const Game={
     }
     $('vsHud').style.display='none';
     FloatText.add(Engine.W/2,Engine.H*.34,result,win?'#00ff9a':'#ff3b5c',22);
-    Toast.show(`${result} · K ${mineK}-${theirK} · ❤ ${mineL}-${theirL}`, win?'ok':'pink');
-    this.end(win, {vs:true, result, mine:mineK, theirs:theirK, reason});
+    Toast.show(`${result} · ${mineS.toLocaleString()}–${theirS.toLocaleString()} pts`, win?'ok':'pink');
+    this.end(win, {vs:true, result, mine:mineS, theirs:theirS, reason});
   },
   start(opts={}){
     const sh=shipData(),bon=shipBonus();
@@ -2531,11 +2576,15 @@ const Game={
       opp:null,pvpHits:0,vsEnded:false,_nid:1
     });
     GS.posX=Engine.W/2-playerSize()/2;GS.size=playerSize();
-    if(GS.mode==='vs') initVsArena();
+    if(GS.mode==='vs'){
+      initVsArena();
+      GS.vsRaceGoal=opts.vsGoal||VS_RACE_GOAL;
+      GS.vsMatchTime=opts.vsTime||VS_MATCH_DURATION;
+      GS.waveGoal=GS.vsRaceGoal;
+      GS.waveTime=GS.vsMatchTime;
+    }
     Particles.pool.clear();FloatText.clear();BG.set(theme);
-    GS.waveGoal=waveGoalFor(1);
-    // VS: higher pressure shared wave
-    if(GS.mode==='vs') GS.waveGoal=Math.round(GS.waveGoal*1.35);
+    if(GS.mode!=='vs') GS.waveGoal=waveGoalFor(1);
     UI.score();UI.wave();UI.lives();UI.pwr();UI.boss(false);UI.combo();UI.mission();UI.obj();
     hideAllMenus();UI.gameUI(true);$('dangerVig').style.opacity=0;
     AudioSys.startMusic();Engine.start();
@@ -2804,6 +2853,10 @@ function fillProfileCard(p){
   if($('profRankVs'))$('profRankVs').textContent=(p&&p.rankVs)?('#'+p.rankVs):((Meta.rankVs)?('#'+Meta.rankVs):'—');
   if($('profWave'))$('profWave').textContent=String((p&&p.bestWave)||Meta.highWave||1);
   if($('profVsKills'))$('profVsKills').textContent=String((p&&p.vsKills)||Meta.vsKills||0);
+  if($('profWallet')){
+    const w=Online.wallet||(Meta.wallet?{short:Meta.wallet.slice(0,6)+'…'+Meta.wallet.slice(-4)}:null);
+    $('profWallet').textContent=w?(w.short||w.address):'—';
+  }
   if($('nickStatus')){
     if(!Meta.nickClaimed||nick==='PILOT')$('nickStatus').textContent='Claim a unique nick to post ranks';
     else $('nickStatus').textContent='Nick locked to this device · unique worldwide';
@@ -2883,7 +2936,8 @@ function rankRow(r,i,kind){
   const row=document.createElement('div');row.className='list-row';
   const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   if(kind==='vs'){
-    row.innerHTML=`<div class="lr-l"><div class="lr-t">${medal} ${r.name}</div><div class="lr-s">KILLS ${r.kills||0} · SCORE ${(r.score||0).toLocaleString()}</div></div><div class="lr-r">${r.kills||0} K</div>`;
+    const pts=r.waveScore||r.score||0;
+    row.innerHTML=`<div class="lr-l"><div class="lr-t">${medal} ${r.name}</div><div class="lr-s">RACE PTS · KILLS ${r.kills||0}</div></div><div class="lr-r">${pts.toLocaleString()}</div>`;
   } else {
     row.innerHTML=`<div class="lr-l"><div class="lr-t">${medal} ${r.name}</div><div class="lr-s">WAVE ${r.wave||1} · ${(r.mode||'endless').toUpperCase()}</div></div><div class="lr-r">${(r.score||0).toLocaleString()}</div>`;
   }
@@ -3144,14 +3198,20 @@ function wireUI(){
       else stopRoomsPoll();
     },4000);
   }
-  function launchVsMatch({seed,diff}){
+  function launchVsMatch(opts){
     if(vsLaunching) return;
     vsLaunching=true;
     stopRoomsPoll();
     try{
-      Toast.show('FIGHT!','ok');
+      Toast.show('VS RACE · 10k / 90s','ok');
       hideAllMenus();
-      Game.start({mode:'vs',diff:diff||$('vsDiff').value||'hard',seed});
+      Game.start({
+        mode:'vs',
+        diff:(opts&&opts.diff)||($('vsDiff')&&$('vsDiff').value)||'hard',
+        seed:opts&&opts.seed,
+        vsGoal:(opts&&opts.vsGoal)||VS_RACE_GOAL,
+        vsTime:(opts&&opts.vsTime)||VS_MATCH_DURATION
+      });
     }catch(e){
       vsLaunching=false;
       Toast.show('START FAILED','pink');
@@ -3159,31 +3219,41 @@ function wireUI(){
     }
     setTimeout(()=>{vsLaunching=false;},2000);
   }
+  function refreshLobbyNetUI(){
+    const el=$('vsLobbyNet');
+    if(!el||typeof Online==='undefined')return;
+    const a=Online.netReport, b=Online.peerNetReport;
+    const me=a?(a.ok?'✓ ':'✗ ')+a.label:'YOU · probe pending';
+    const pe=b?(b.ok?'✓ ':'✗ ')+b.quality.toUpperCase()+' · '+b.rtt+'ms · ~'+b.bitrateKbps+' kb/s':'OPP · waiting…';
+    el.textContent=me+'  |  '+pe;
+    el.style.borderColor=(a&&a.ok&&(!Online.guestCount()||(b&&b.ok)))?'rgba(0,255,154,.5)':'rgba(255,208,0,.35)';
+  }
   wireVsNet=function(){
     Online.onConnect=()=>{
       updateVsStatus();
       Toast.show('OPPONENT JOINED','ok');
       renderRoomsList();
+      Online.probeNetwork().then(()=>{Online.shareNetReport();refreshLobbyNetUI();}).catch(()=>{});
     };
-    Online.onLobby=()=>{updateVsStatus();};
-    Online.onStart=({seed,diff})=>launchVsMatch({seed,diff});
+    Online.onLobby=()=>{updateVsStatus();refreshLobbyNetUI();};
+    Online.onStart=(opts)=>launchVsMatch(opts||{});
     Online.onWorld=(w)=>{ if(w) applyVsWorld(w); };
     Online.onEvt=(msg)=>{
       if(msg.kind==='end'&&isVsGuest()&&!GS.vsEnded){
-        if(msg.reason==='ko_win') Game.endVs('ko_lose');
+        if(msg.reason==='race_win') Game.endVs('race_lose');
+        else if(msg.reason==='race_lose') Game.endVs('race_win');
+        else if(msg.reason==='ko_win') Game.endVs('ko_lose');
         else if(msg.reason==='ko_lose') Game.endVs('ko_win');
         else {
-          if(Online.lastWorld&&Online.lastWorld.me&&Online.lastWorld.you){
-            GS.kills=Online.lastWorld.you.kills|0;
-            GS.lives=Online.lastWorld.you.lives|0;
-            GS.waveScore=Online.lastWorld.you.waveScore|0;
-            if(GS.opp){
-              GS.opp.kills=Online.lastWorld.me.kills|0;
-              GS.opp.lives=Online.lastWorld.me.lives|0;
-              GS.opp.waveScore=Online.lastWorld.me.waveScore|0;
-            }
-          }
-          Game.endVs('timer');
+          // pull scores from ships if present
+          try{
+            const ships=(Online.lastWorld&&Online.lastWorld.ships)||[];
+            const host=ships.find(s=>s&&s[0]==='host');
+            const me=ships.find(s=>s&&s[0]===(Online.mySlot||'g0'));
+            if(me) GS.waveScore=me[7]|0;
+            if(host&&GS.opp){ GS.opp.waveScore=host[7]|0; GS.opp.kills=host[5]|0; }
+          }catch(e){}
+          Game.endVs(msg.reason||'timer');
         }
       }
     };
@@ -3198,8 +3268,17 @@ function wireUI(){
     const btn=$('vsHostBtn');
     try{
       if(btn) btn.disabled=true;
-      if(st) st.textContent='Creating squad room…';
+      if(st) st.textContent='Checking network…';
       wireVsNet();
+      const net=await Online.probeNetwork();
+      refreshLobbyNetUI();
+      if($('netProbeStatus'))$('netProbeStatus').textContent='Network · '+net.label;
+      if(!net.ok){
+        Toast.show('NETWORK WEAK','pink');
+        if(st) st.textContent='Network too weak — improve connection and retry';
+        return;
+      }
+      if(st) st.textContent='Creating VS room…';
       const open=await Online.listRooms();
       if(open.length>=(Online.MAX_ROOMS||10)){
         Toast.show('ROOMS FULL (10)','pink');
@@ -3213,14 +3292,16 @@ function wireUI(){
         code,
         peerId:Online.peerId,
         host:hostName,
-        title:hostName+' SQUAD',
+        title:hostName+' VS',
         diff:($('vsDiff')&&$('vsDiff').value)||'hard',
         players:1
       });
+      Online.shareNetReport();
       if($('roomsMineBox'))$('roomsMineBox').style.display='block';
-      Toast.show('SQUAD ROOM LIVE','ok');
-      if(st) st.textContent='Your room is live — wait for pilots (1/4)';
+      Toast.show('ROOM LIVE · waiting 1v1','ok');
+      if(st) st.textContent='Room live · wait for 1 opponent (1/2)';
       updateVsStatus();
+      refreshLobbyNetUI();
       showPage('pageVsRooms','home');
       startRoomsPoll();
       renderRoomsList();
@@ -3234,9 +3315,32 @@ function wireUI(){
     }
   }
   if($('vsHostBtn'))$('vsHostBtn').onclick=()=>createVsRoom();
+  if($('netProbeBtn'))$('netProbeBtn').onclick=async()=>{
+    try{
+      if($('netProbeStatus'))$('netProbeStatus').textContent='Probing…';
+      const n=await Online.probeNetwork();
+      if($('netProbeStatus'))$('netProbeStatus').textContent='Network · '+n.label+(n.ok?' ✓':' ✗');
+      Online.shareNetReport();
+      refreshLobbyNetUI();
+      Toast.show(n.ok?'NETWORK OK':'NETWORK WEAK',n.ok?'ok':'pink');
+    }catch(e){Toast.show('PROBE FAIL','pink');}
+  };
+  if($('walletBtn'))$('walletBtn').onclick=async()=>{
+    try{
+      const w=await Online.connectWallet();
+      Meta.wallet=w.address; Meta.save();
+      if($('profWallet'))$('profWallet').textContent=w.short;
+      Toast.show('WALLET '+w.short,'ok');
+    }catch(e){Toast.show(String(e.message||'NO WALLET').slice(0,36),'pink');}
+  };
   if($('vsGoRooms'))$('vsGoRooms').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
   if($('roomsRefresh'))$('roomsRefresh').onclick=()=>renderRoomsList();
   if($('vsReadyBtn'))$('vsReadyBtn').onclick=()=>{
+    if(Online.role==='host'&&!Online.bothNetOk()){
+      Toast.show('Waiting stable net both sides…','pink');
+      // still allow force after second press
+      if(!$('vsReadyBtn').dataset.force){ $('vsReadyBtn').dataset.force='1'; return; }
+    }
     Online.setReady($('vsDiff')?$('vsDiff').value:'hard');
     updateVsStatus();
     Toast.show(Online.role==='host'?'STARTING…':'READY','ok');

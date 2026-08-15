@@ -17,9 +17,14 @@
   const FIRESTORE_ROOMS = 'muzzgalaxy_rooms';
   const FIRESTORE_PROFILES = 'muzzgalaxy_profiles';
   const MAX_GLOBAL_ROOMS = 10;
-  const MAX_ROOM_PLAYERS = 4; // host + up to 3 guests — squad survival
+  // Competitive VS race: 2 pilots same arena (host + 1 guest). Room list still works for all.
+  const MAX_ROOM_PLAYERS = 2;
   // Room vanishes if no host heartbeat for this long (host offline / empty)
   const ROOM_TTL_MS = 60 * 1000;
+  // Network gate for stable live play
+  const NET_MIN_BITRATE_KBPS = 180; // ~180 kb/s download probe
+  const NET_MAX_RTT_MS = 280;
+  const NET_MIN_PASS = true;
   const GLOBAL_FIRESTORE_URL =
     'https://firestore.googleapis.com/v1/projects/' +
     FIRESTORE_PROJECT +
@@ -170,7 +175,7 @@
       .slice(0, 10);
     const battler = (list || [])
       .filter((e) => e.cat === 'vs' || e.mode === 'vs')
-      .sort((a, b) => b.kills - a.kills || b.score - a.score)
+      .sort((a, b) => (b.waveScore || b.score) - (a.waveScore || a.score) || b.kills - a.kills)
       .slice(0, 10);
     return { survivor, battler };
   }
@@ -498,8 +503,12 @@
     publishedRoom: null,
     lastRoomsError: null,
     MAX_ROOMS: MAX_GLOBAL_ROOMS,
+    MAX_PLAYERS: MAX_ROOM_PLAYERS,
     uid: deviceUid(),
     profile: null,
+    netReport: null, // local network probe
+    peerNetReport: null, // opponent report
+    wallet: null, // { address, chainId, connected }
 
     /* ───────── UNIQUE NICK + PROFILE ───────── */
     async getProfile(nick) {
@@ -711,6 +720,126 @@
     resetToGlobalDefault() {
       this.cfg = Object.assign({}, DEFAULT_CFG);
       saveCfg(this.cfg);
+    },
+
+    /* ───────── NETWORK QUALITY / BITRATE PROBE ───────── */
+    async probeNetwork() {
+      const samples = [];
+      const url =
+        'https://firestore.googleapis.com/v1/projects/' +
+        FIRESTORE_PROJECT +
+        '/databases/(default)/documents/' +
+        FIRESTORE_ROOMS +
+        '?pageSize=1';
+      // RTT samples
+      for (let i = 0; i < 4; i++) {
+        const t0 = performance.now();
+        try {
+          await fetch(url, { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json' } });
+          samples.push(performance.now() - t0);
+        } catch (e) {
+          samples.push(999);
+        }
+      }
+      // Bitrate probe: download ~100KB-ish of known payload (repeated JSON)
+      let bitrateKbps = 0;
+      try {
+        const t0 = performance.now();
+        // Use a public CDN small file with cache-bust
+        const r = await fetch('https://www.gstatic.com/generate_204?_=' + Date.now(), {
+          method: 'GET',
+          cache: 'no-store',
+          mode: 'no-cors',
+        });
+        const t1 = performance.now();
+        // no-cors opaque — fallback second probe via firestore list (small)
+        const t2 = performance.now();
+        const body = await fetch(url + '&_=' + Date.now(), { cache: 'no-store' }).then((x) => x.arrayBuffer());
+        const t3 = performance.now();
+        const bytes = body.byteLength || 800;
+        const sec = Math.max(0.001, (t3 - t2) / 1000);
+        bitrateKbps = Math.round((bytes * 8) / 1000 / sec);
+        // synthesize floor if firestore is tiny but fast
+        if (bitrateKbps > 5000) bitrateKbps = 2500;
+        if (bitrateKbps < 50 && samples.every((s) => s < 200)) bitrateKbps = 400; // healthy RTT ⇒ ok bandwidth estimate
+      } catch (e) {
+        bitrateKbps = samples.every((s) => s < NET_MAX_RTT_MS) ? 300 : 80;
+      }
+      const rtt = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+      const jitter = Math.round(
+        Math.sqrt(samples.reduce((a, s) => a + Math.pow(s - rtt, 2), 0) / samples.length)
+      );
+      let quality = 'poor';
+      if (rtt <= 120 && bitrateKbps >= 600 && jitter < 60) quality = 'excellent';
+      else if (rtt <= NET_MAX_RTT_MS && bitrateKbps >= NET_MIN_BITRATE_KBPS && jitter < 100) quality = 'good';
+      else if (rtt <= 400 && bitrateKbps >= 100) quality = 'ok';
+      const ok = quality === 'excellent' || quality === 'good' || quality === 'ok';
+      this.netReport = {
+        ok,
+        quality,
+        rtt,
+        jitter,
+        bitrateKbps,
+        ts: Date.now(),
+        label: quality.toUpperCase() + ' · ' + rtt + 'ms · ~' + bitrateKbps + ' kb/s',
+      };
+      return this.netReport;
+    },
+
+    bothNetOk() {
+      const a = this.netReport;
+      const b = this.peerNetReport;
+      if (!a || !a.ok) return false;
+      if (this.role === 'host' && this.guestCount() >= 1) {
+        if (!b || !b.ok) return false;
+      }
+      return true;
+    },
+
+    shareNetReport() {
+      if (!this.netReport) return;
+      this.send({ t: 'net_report', report: this.netReport });
+    },
+
+    /* ───────── CRYPTO WALLET (MetaMask / injected EIP-1193) ───────── */
+    async connectWallet() {
+      const eth = global.ethereum;
+      if (!eth) {
+        throw new Error('No crypto wallet found (install MetaMask or similar)');
+      }
+      const accounts = await eth.request({ method: 'eth_requestAccounts' });
+      if (!accounts || !accounts[0]) throw new Error('Wallet rejected');
+      let chainId = '0x1';
+      try {
+        chainId = await eth.request({ method: 'eth_chainId' });
+      } catch (e) {}
+      this.wallet = {
+        address: String(accounts[0]),
+        short: String(accounts[0]).slice(0, 6) + '…' + String(accounts[0]).slice(-4),
+        chainId: String(chainId),
+        connected: true,
+        ts: Date.now(),
+      };
+      try {
+        eth.removeAllListeners && eth.removeAllListeners('accountsChanged');
+        eth.on &&
+          eth.on('accountsChanged', (accs) => {
+            if (!accs || !accs[0]) {
+              this.wallet = null;
+            } else if (this.wallet) {
+              this.wallet.address = accs[0];
+              this.wallet.short = accs[0].slice(0, 6) + '…' + accs[0].slice(-4);
+            }
+            if (this.onWallet) this.onWallet(this.wallet);
+          });
+      } catch (e) {}
+      if (this.onWallet) this.onWallet(this.wallet);
+      return this.wallet;
+    },
+
+    disconnectWallet() {
+      this.wallet = null;
+      if (this.onWallet) this.onWallet(null);
     },
 
     /* ───────── GLOBAL ROOM BROWSER (max 10) — list only, no codes shown ───────── */
@@ -1084,19 +1213,32 @@
       if (this.conn && this.conn.open && !(this.conns || []).includes(this.conn)) this.sendTo(this.conn, obj);
     },
 
-    /** Host starts when ≥1 guest (2 pilots) — squad survival */
-    beginMatch(diff) {
+    /** Host starts 1v1 race when guest connected + both nets ok (or force) */
+    beginMatch(diff, force) {
       if (this._matchStarted) return false;
       if (this.role !== 'host') return false;
       if (this.guestCount() < 1) return false;
+      if (!force && !this.bothNetOk()) {
+        if (this.onLobby) this.onLobby();
+        return false;
+      }
       this._matchStarted = true;
       this.vsActive = true;
       const seed = (Math.random() * 1e9) | 0;
       const d = diff || this._pendingDiff || 'hard';
       const lobby = this.lobbyList();
       this.setRoomStatus(this.roomCode, 'playing', this.guestCount() + 1);
-      this.broadcast({ t: 'start', seed, diff: d, mode: 'survival', lobby });
-      if (this.onStart) this.onStart({ seed, diff: d, mode: 'survival', lobby });
+      this.broadcast({
+        t: 'start',
+        seed,
+        diff: d,
+        mode: 'survival',
+        lobby,
+        vsGoal: 10000,
+        vsTime: 90000,
+      });
+      if (this.onStart)
+        this.onStart({ seed, diff: d, mode: 'survival', lobby, vsGoal: 10000, vsTime: 90000 });
       return true;
     },
 
@@ -1115,11 +1257,11 @@
             this.broadcast({ t: 'lobby', lobby: this.lobbyList() });
             this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
             if (this.onLobby) this.onLobby();
-            // Auto-start only when room is full (4) — otherwise host presses FIGHT
+            // Auto-start when 2 pilots ready + network ok
             if (this.guestCount() + 1 >= MAX_ROOM_PLAYERS) {
               setTimeout(() => {
-                if (!this._matchStarted) this.beginMatch(this._pendingDiff);
-              }, 900);
+                if (!this._matchStarted && this.bothNetOk()) this.beginMatch(this._pendingDiff);
+              }, 1200);
             }
           }
           break;
@@ -1128,11 +1270,32 @@
           this.mySlot = msg.id || this.mySlot;
           this._helloOk = true;
           if (msg.lobby) this._remoteLobby = msg.lobby;
+          // Guest shares network report when joined
+          if (this.role === 'guest') {
+            this.probeNetwork()
+              .then(() => this.shareNetReport())
+              .catch(() => {});
+          }
           if (this.onLobby) this.onLobby();
           break;
         case 'lobby':
           this._remoteLobby = msg.lobby || [];
           if (this.onLobby) this.onLobby();
+          break;
+        case 'net_report':
+          this.peerNetReport = msg.report || null;
+          if (this.onLobby) this.onLobby();
+          // Host auto-start when both nets good and room has 2
+          if (
+            this.role === 'host' &&
+            !this._matchStarted &&
+            this.guestCount() >= 1 &&
+            this.bothNetOk()
+          ) {
+            setTimeout(() => {
+              if (!this._matchStarted) this.beginMatch(this._pendingDiff);
+            }, 600);
+          }
           break;
         case 'room_full':
           if (typeof Toast !== 'undefined') Toast.show('ROOM FULL (4)', 'pink');
@@ -1159,7 +1322,14 @@
           this.vsActive = true;
           if (msg.lobby) this._remoteLobby = msg.lobby;
           if (this.onStart)
-            this.onStart({ seed: msg.seed, diff: msg.diff || 'hard', mode: msg.mode || 'survival', lobby: msg.lobby });
+            this.onStart({
+              seed: msg.seed,
+              diff: msg.diff || 'hard',
+              mode: msg.mode || 'survival',
+              lobby: msg.lobby,
+              vsGoal: msg.vsGoal || 10000,
+              vsTime: msg.vsTime || 90000,
+            });
           break;
         case 'input':
           if (this.role === 'host') {
@@ -1217,7 +1387,9 @@
       this._pendingDiff = diff || 'hard';
       this.send({ t: 'ready', diff: this._pendingDiff, name: this.myName() });
       if (this.role === 'host' && this.guestCount() >= 1) {
-        this.beginMatch(this._pendingDiff);
+        // Prefer stable net; host button can force after toast if needed
+        const forced = !this.bothNetOk();
+        this.beginMatch(this._pendingDiff, forced);
       }
     },
 

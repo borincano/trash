@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    },
+    {
+      "source": "/(index.html|online.js|manifest.webmanifest)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/play", "destination": "/index.html" },
+    { "source": "/ios", "destination": "/ios-install.html" }
+  ]
+}

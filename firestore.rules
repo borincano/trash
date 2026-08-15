@@ -37,6 +37,7 @@ service cloud.firestore {
         request.resource.data.players >= 1 &&
         request.resource.data.players <= 4 &&
         request.resource.data.status in ['open', 'full', 'playing'];
+      // note: client VS race uses max 2; 4 kept valid for future squad modes
       allow delete: if true;
     }
 

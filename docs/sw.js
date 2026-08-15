@@ -1,6 +1,6 @@
 /* MUZZ GALAXY lightweight service worker — offline shell */
-const CACHE = 'muzz-galaxy-v1';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE = 'muzz-galaxy-v3-race';
+const ASSETS = ['./', './index.html', './online.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './ios-install.html'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
