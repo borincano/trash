@@ -495,9 +495,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
         <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
       </div>
       <button class="btn cyan" id="vsHostBtn" type="button" style="width:100%;padding:1rem;font-size:.85rem;letter-spacing:.18em">＋ CREATE ROOM</button>
-      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">2 players · first to 10k or 90s · net check required</div>
-      <div class="chip" id="netProbeStatus" style="margin-top:6px">Network · not checked</div>
-      <button class="btn outline" id="netProbeBtn" type="button" style="width:100%;margin-top:8px">VERIFY NETWORK</button>
+      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">2 players · first to 10k or 90s</div>
+      <div class="chip" id="netProbeStatus" style="margin-top:6px">Status · checking…</div>
+      <button class="btn outline" id="netProbeBtn" type="button" style="width:100%;margin-top:8px">CHECK ONLINE</button>
     </div>
 
     <div id="roomsMineBox" style="display:none;margin-bottom:14px;padding:12px;border:1px solid rgba(255,208,0,.4);border-radius:12px;background:rgba(255,208,0,.08)">
@@ -3063,10 +3063,15 @@ async function joinListedRoom(room){
     const label=(room&&room.title)||(room&&room.host)||'room';
     if($('roomsStatus'))$('roomsStatus').textContent='Joining '+label+'…';
     Toast.show('JOINING…','ok');
+    // Soft online check
+    try{ await Online.probeNetwork(); }catch(e){}
     await Online.joinRoom(room);
     if(room.diff&&$('vsDiff'))$('vsDiff').value=room.diff;
-    Toast.show('JOINED SQUAD','ok');
+    Toast.show('JOINED · ONLINE','ok');
+    if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · joined multi';
+    Online.shareNetReport();
     updateVsStatus();
+    refreshLobbyNetUI();
     renderRoomsList();
   }catch(e){
     console.error(e);
@@ -3184,7 +3189,19 @@ function wireUI(){
   $('modeEndless').onclick=()=>Game.start({mode:'endless',diff:$('setDiff').value});
   $('modeDaily').onclick=()=>{if(Meta.dailyDone){Toast.show('DAILY ALREADY CLEARED');return;}Game.start({mode:'daily',diff:'hard',daily:true,theme:hashStr(todayKey())%THEMES.length});};
   $('modeEvent').onclick=()=>Game.start({mode:'event',diff:'nightmare',theme:9});
-  $('modeVs').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
+  $('modeVs').onclick=()=>{
+    showPage('pageVsRooms','home');
+    startRoomsPoll();
+    renderRoomsList();
+    // Detect online as soon as multi hub opens
+    Online.probeNetwork().then(n=>{
+      if($('netProbeStatus'))$('netProbeStatus').textContent=n.label+(n.ok?' ✓':'');
+      if($('roomsCreateStatus')&&n.ok)$('roomsCreateStatus').textContent='ONLINE · listo para multi 1v1 · first to 10k / 90s';
+      refreshLobbyNetUI();
+    }).catch(()=>{
+      if($('netProbeStatus'))$('netProbeStatus').textContent='OFFLINE · check Wi‑Fi/datos';
+    });
+  };
   $('modeRank').onclick=()=>showPage('pageRank','social');
 
   // VS Super Survival + room browser
@@ -3268,16 +3285,19 @@ function wireUI(){
     const btn=$('vsHostBtn');
     try{
       if(btn) btn.disabled=true;
-      if(st) st.textContent='Checking network…';
       wireVsNet();
-      const net=await Online.probeNetwork();
-      refreshLobbyNetUI();
-      if($('netProbeStatus'))$('netProbeStatus').textContent='Network · '+net.label;
-      if(!net.ok){
-        Toast.show('NETWORK WEAK','pink');
-        if(st) st.textContent='Network too weak — improve connection and retry';
-        return;
-      }
+      // Soft online check — never hard-block multi if cloud answers later
+      try{
+        const net=await Online.probeNetwork();
+        if($('netProbeStatus'))$('netProbeStatus').textContent=net.label+(net.ok?' ✓':'');
+        refreshLobbyNetUI();
+        if(!net.ok && !Online.isBrowserOnline()){
+          Toast.show('NO INTERNET','pink');
+          if(st) st.textContent='Sin internet — activa Wi‑Fi/datos e intenta de nuevo';
+          return;
+        }
+        if(!net.ok) Toast.show('Red inestable — se intenta igual','ok');
+      }catch(e){ /* continue */ }
       if(st) st.textContent='Creating VS room…';
       const open=await Online.listRooms();
       if(open.length>=(Online.MAX_ROOMS||10)){
@@ -3299,7 +3319,8 @@ function wireUI(){
       Online.shareNetReport();
       if($('roomsMineBox'))$('roomsMineBox').style.display='block';
       Toast.show('ROOM LIVE · waiting 1v1','ok');
-      if(st) st.textContent='Room live · wait for 1 opponent (1/2)';
+      if(st) st.textContent='ONLINE · room live · wait 1 opponent (1/2)';
+      if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · hosting multi';
       updateVsStatus();
       refreshLobbyNetUI();
       showPage('pageVsRooms','home');
@@ -3317,13 +3338,13 @@ function wireUI(){
   if($('vsHostBtn'))$('vsHostBtn').onclick=()=>createVsRoom();
   if($('netProbeBtn'))$('netProbeBtn').onclick=async()=>{
     try{
-      if($('netProbeStatus'))$('netProbeStatus').textContent='Probing…';
+      if($('netProbeStatus'))$('netProbeStatus').textContent='Checking online…';
       const n=await Online.probeNetwork();
-      if($('netProbeStatus'))$('netProbeStatus').textContent='Network · '+n.label+(n.ok?' ✓':' ✗');
+      if($('netProbeStatus'))$('netProbeStatus').textContent=n.label+(n.ok?' ✓':' ✗');
       Online.shareNetReport();
       refreshLobbyNetUI();
-      Toast.show(n.ok?'NETWORK OK':'NETWORK WEAK',n.ok?'ok':'pink');
-    }catch(e){Toast.show('PROBE FAIL','pink');}
+      Toast.show(n.ok?'ONLINE ✓':'OFFLINE','ok');
+    }catch(e){Toast.show('CHECK FAIL','pink');}
   };
   if($('walletBtn'))$('walletBtn').onclick=async()=>{
     try{
@@ -3336,11 +3357,6 @@ function wireUI(){
   if($('vsGoRooms'))$('vsGoRooms').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
   if($('roomsRefresh'))$('roomsRefresh').onclick=()=>renderRoomsList();
   if($('vsReadyBtn'))$('vsReadyBtn').onclick=()=>{
-    if(Online.role==='host'&&!Online.bothNetOk()){
-      Toast.show('Waiting stable net both sides…','pink');
-      // still allow force after second press
-      if(!$('vsReadyBtn').dataset.force){ $('vsReadyBtn').dataset.force='1'; return; }
-    }
     Online.setReady($('vsDiff')?$('vsDiff').value:'hard');
     updateVsStatus();
     Toast.show(Online.role==='host'?'STARTING…':'READY','ok');

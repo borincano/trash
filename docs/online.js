@@ -21,10 +21,9 @@
   const MAX_ROOM_PLAYERS = 2;
   // Room vanishes if no host heartbeat for this long (host offline / empty)
   const ROOM_TTL_MS = 60 * 1000;
-  // Network gate for stable live play
-  const NET_MIN_BITRATE_KBPS = 180; // ~180 kb/s download probe
-  const NET_MAX_RTT_MS = 280;
-  const NET_MIN_PASS = true;
+  // Network gate — soft metrics (never hard-block multi if cloud is reachable)
+  const NET_MIN_BITRATE_KBPS = 80;
+  const NET_MAX_RTT_MS = 450;
   const GLOBAL_FIRESTORE_URL =
     'https://firestore.googleapis.com/v1/projects/' +
     FIRESTORE_PROJECT +
@@ -722,83 +721,98 @@
       saveCfg(this.cfg);
     },
 
-    /* ───────── NETWORK QUALITY / BITRATE PROBE ───────── */
+    /* ───────── NETWORK QUALITY / ONLINE DETECT ───────── */
+    isBrowserOnline() {
+      try {
+        return typeof navigator === 'undefined' || navigator.onLine !== false;
+      } catch (e) {
+        return true;
+      }
+    },
+
     async probeNetwork() {
       const samples = [];
+      let cloudOk = false;
       const url =
         'https://firestore.googleapis.com/v1/projects/' +
         FIRESTORE_PROJECT +
         '/databases/(default)/documents/' +
         FIRESTORE_ROOMS +
         '?pageSize=1';
-      // RTT samples
-      for (let i = 0; i < 4; i++) {
+      // Quick online check: 2 RTT samples to game cloud (rooms API)
+      for (let i = 0; i < 2; i++) {
         const t0 = performance.now();
         try {
-          await fetch(url, { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json' } });
+          const res = await fetch(url + '&_=' + Date.now() + i, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' },
+          });
           samples.push(performance.now() - t0);
+          if (res.ok || res.status === 200 || res.status === 404) cloudOk = true;
         } catch (e) {
           samples.push(999);
         }
       }
-      // Bitrate probe: download ~100KB-ish of known payload (repeated JSON)
       let bitrateKbps = 0;
       try {
-        const t0 = performance.now();
-        // Use a public CDN small file with cache-bust
-        const r = await fetch('https://www.gstatic.com/generate_204?_=' + Date.now(), {
-          method: 'GET',
-          cache: 'no-store',
-          mode: 'no-cors',
-        });
-        const t1 = performance.now();
-        // no-cors opaque — fallback second probe via firestore list (small)
         const t2 = performance.now();
-        const body = await fetch(url + '&_=' + Date.now(), { cache: 'no-store' }).then((x) => x.arrayBuffer());
+        const body = await fetch(url + '&b=' + Date.now(), { cache: 'no-store' }).then((x) => x.arrayBuffer());
         const t3 = performance.now();
-        const bytes = body.byteLength || 800;
+        const bytes = Math.max(body.byteLength || 0, 400);
         const sec = Math.max(0.001, (t3 - t2) / 1000);
         bitrateKbps = Math.round((bytes * 8) / 1000 / sec);
-        // synthesize floor if firestore is tiny but fast
-        if (bitrateKbps > 5000) bitrateKbps = 2500;
-        if (bitrateKbps < 50 && samples.every((s) => s < 200)) bitrateKbps = 400; // healthy RTT ⇒ ok bandwidth estimate
+        if (bitrateKbps > 8000) bitrateKbps = 2000;
+        // Small JSON responses look “slow bitrate” — if cloud answered, treat as online
+        if (cloudOk && bitrateKbps < 100) bitrateKbps = 250;
       } catch (e) {
-        bitrateKbps = samples.every((s) => s < NET_MAX_RTT_MS) ? 300 : 80;
+        bitrateKbps = cloudOk ? 200 : 0;
       }
-      const rtt = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+      const rtt = Math.round(samples.reduce((a, b) => a + b, 0) / Math.max(1, samples.length));
       const jitter = Math.round(
-        Math.sqrt(samples.reduce((a, s) => a + Math.pow(s - rtt, 2), 0) / samples.length)
+        Math.sqrt(samples.reduce((a, s) => a + Math.pow(s - rtt, 2), 0) / Math.max(1, samples.length))
       );
-      let quality = 'poor';
-      if (rtt <= 120 && bitrateKbps >= 600 && jitter < 60) quality = 'excellent';
-      else if (rtt <= NET_MAX_RTT_MS && bitrateKbps >= NET_MIN_BITRATE_KBPS && jitter < 100) quality = 'good';
-      else if (rtt <= 400 && bitrateKbps >= 100) quality = 'ok';
-      const ok = quality === 'excellent' || quality === 'good' || quality === 'ok';
+      // ONLINE if browser online + cloud reachable (bitrate is advisory only)
+      const browserOn = this.isBrowserOnline();
+      let quality = 'offline';
+      if (cloudOk || (browserOn && rtt < 900)) {
+        if (rtt <= 140 && bitrateKbps >= 400) quality = 'excellent';
+        else if (rtt <= NET_MAX_RTT_MS && bitrateKbps >= NET_MIN_BITRATE_KBPS) quality = 'good';
+        else if (cloudOk) quality = 'ok';
+        else quality = 'weak';
+      }
+      const ok = quality !== 'offline'; // multiplayer allowed whenever cloud/browser is up
+      this.online = ok;
       this.netReport = {
         ok,
+        online: ok,
+        cloudOk,
         quality,
-        rtt,
+        rtt: rtt > 900 ? 0 : rtt,
         jitter,
         bitrateKbps,
         ts: Date.now(),
-        label: quality.toUpperCase() + ' · ' + rtt + 'ms · ~' + bitrateKbps + ' kb/s',
+        label: ok
+          ? 'ONLINE · ' + quality.toUpperCase() + ' · ' + (rtt > 900 ? '—' : rtt + 'ms') + ' · ~' + bitrateKbps + ' kb/s'
+          : 'OFFLINE · no cloud',
       };
       return this.netReport;
     },
 
     bothNetOk() {
+      // Soft gate: local online is enough; peer report is bonus (never hard-block forever)
       const a = this.netReport;
-      const b = this.peerNetReport;
-      if (!a || !a.ok) return false;
-      if (this.role === 'host' && this.guestCount() >= 1) {
-        if (!b || !b.ok) return false;
-      }
-      return true;
+      if (a && a.ok) return true;
+      if (this.online) return true;
+      if (this.isBrowserOnline()) return true;
+      return false;
     },
 
     shareNetReport() {
       if (!this.netReport) return;
-      this.send({ t: 'net_report', report: this.netReport });
+      try {
+        this.send({ t: 'net_report', report: this.netReport });
+      } catch (e) {}
     },
 
     /* ───────── CRYPTO WALLET (MetaMask / injected EIP-1193) ───────── */
@@ -1016,20 +1030,26 @@
     },
 
     peerOptions() {
-      // Public PeerJS cloud — works on HTTPS (web + Capacitor)
+      // Default PeerJS cloud + STUN (works on HTTPS web + Capacitor)
       return {
-        host: '0.peerjs.com',
-        port: 443,
-        path: '/',
-        secure: true,
         debug: 0,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:global.stun.twilio.com:3478' },
           ],
         },
       };
+    },
+
+    _makePeer(id) {
+      const opts = this.peerOptions();
+      try {
+        return id ? new Peer(id, opts) : new Peer(opts);
+      } catch (e) {
+        return id ? new Peer(id) : new Peer();
+      }
     },
 
     async hostRoom() {
@@ -1043,45 +1063,77 @@
       this._pendingDiff = 'hard';
 
       return new Promise((resolve, reject) => {
-        this.peer = new Peer(this.peerId, this.peerOptions());
+        this.peer = this._makePeer(this.peerId);
         const failTimer = setTimeout(() => {
           if (this.status === 'hosting') {
             this.status = 'error';
-            reject(new Error('Host peer timeout — check internet'));
+            reject(new Error('Host peer timeout — check internet / retry'));
           }
-        }, 20000);
+        }, 25000);
         this.peer.on('open', (id) => {
           clearTimeout(failTimer);
           this.peerId = id || this.peerId;
           this.status = 'waiting';
+          this.online = true;
           resolve(this.roomCode);
         });
         this.peer.on('error', (err) => {
+          // Unavailable-id → retry once with new code
+          const typ = err && err.type;
+          if (typ === 'unavailable-id' && !this._idRetried) {
+            this._idRetried = true;
+            try {
+              this.peer.destroy();
+            } catch (e) {}
+            this.roomCode = this.genCode();
+            this.peerId = PEER_PREFIX + this.roomCode;
+            this.peer = this._makePeer(this.peerId);
+            this.peer.on('open', (id) => {
+              clearTimeout(failTimer);
+              this.peerId = id || this.peerId;
+              this.status = 'waiting';
+              this.online = true;
+              resolve(this.roomCode);
+            });
+            this.peer.on('error', (err2) => {
+              clearTimeout(failTimer);
+              this.status = 'error';
+              reject(err2.type ? new Error('Host peer: ' + err2.type) : err2);
+            });
+            this.peer.on('connection', (conn) => this._onHostConnection(conn));
+            return;
+          }
           clearTimeout(failTimer);
           this.status = 'error';
-          reject(err);
+          reject(err && err.type ? new Error('Host peer: ' + err.type) : err);
         });
-        this.peer.on('connection', (conn) => {
-          if (this._matchStarted) {
-            conn.close();
-            return;
-          }
-          if (this.guestCount() >= MAX_ROOM_PLAYERS - 1) {
-            try {
-              conn.on('open', () => {
-                try {
-                  conn.send({ t: 'room_full' });
-                } catch (e) {}
-                setTimeout(() => conn.close(), 200);
-              });
-            } catch (e) {
-              conn.close();
-            }
-            return;
-          }
-          this.wireHostConn(conn);
-        });
+        this.peer.on('connection', (conn) => this._onHostConnection(conn));
       });
+    },
+
+    _onHostConnection(conn) {
+      if (this._matchStarted) {
+        try {
+          conn.close();
+        } catch (e) {}
+        return;
+      }
+      if (this.guestCount() >= MAX_ROOM_PLAYERS - 1) {
+        try {
+          conn.on('open', () => {
+            try {
+              conn.send({ t: 'room_full' });
+            } catch (e) {}
+            setTimeout(() => conn.close(), 200);
+          });
+        } catch (e) {
+          try {
+            conn.close();
+          } catch (e2) {}
+        }
+        return;
+      }
+      this.wireHostConn(conn);
     },
 
     /** Join from room list object (preferred) or raw code/peerId */
@@ -1109,20 +1161,21 @@
       if (!code || !targetPeer) throw new Error('Invalid room');
 
       return new Promise((resolve, reject) => {
-        this.peer = new Peer(undefined, this.peerOptions());
+        this.peer = this._makePeer();
         let settled = false;
         const failTimer = setTimeout(() => {
           if (!settled) {
             settled = true;
-            reject(new Error('Cannot join — host offline or room expired'));
+            reject(new Error('Cannot join — host offline or room expired. Refresh list.'));
           }
-        }, 20000);
+        }, 22000);
         this.peer.on('open', () => {
           const conn = this.peer.connect(targetPeer, { reliable: true, serialization: 'json' });
           this.conn = conn;
           conn.on('open', () => {
             this.wireGuestConn(conn);
             this.status = 'connected';
+            this.online = true;
             this.send({ t: 'hello', name: this.myName() });
             if (!settled) {
               settled = true;
@@ -1134,7 +1187,7 @@
             if (!settled) {
               settled = true;
               clearTimeout(failTimer);
-              reject(err.type ? new Error('Join failed: ' + err.type) : err);
+              reject(err && err.type ? new Error('Join failed: ' + err.type) : err);
             }
           });
         });
@@ -1142,7 +1195,7 @@
           if (!settled) {
             settled = true;
             clearTimeout(failTimer);
-            reject(err.type ? new Error('Peer error: ' + err.type) : err);
+            reject(err && err.type ? new Error('Peer error: ' + err.type) : err);
           }
         });
       });
@@ -1213,15 +1266,11 @@
       if (this.conn && this.conn.open && !(this.conns || []).includes(this.conn)) this.sendTo(this.conn, obj);
     },
 
-    /** Host starts 1v1 race when guest connected + both nets ok (or force) */
+    /** Host starts 1v1 race when guest connected (net report is advisory only) */
     beginMatch(diff, force) {
       if (this._matchStarted) return false;
       if (this.role !== 'host') return false;
       if (this.guestCount() < 1) return false;
-      if (!force && !this.bothNetOk()) {
-        if (this.onLobby) this.onLobby();
-        return false;
-      }
       this._matchStarted = true;
       this.vsActive = true;
       const seed = (Math.random() * 1e9) | 0;
@@ -1257,11 +1306,11 @@
             this.broadcast({ t: 'lobby', lobby: this.lobbyList() });
             this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
             if (this.onLobby) this.onLobby();
-            // Auto-start when 2 pilots ready + network ok
-            if (this.guestCount() + 1 >= MAX_ROOM_PLAYERS) {
+            // Auto-start when 2 pilots connected (1v1 race)
+            if (this.guestCount() >= 1) {
               setTimeout(() => {
-                if (!this._matchStarted && this.bothNetOk()) this.beginMatch(this._pendingDiff);
-              }, 1200);
+                if (!this._matchStarted) this.beginMatch(this._pendingDiff);
+              }, 900);
             }
           }
           break;
@@ -1269,6 +1318,7 @@
           this.opp.name = msg.name || this.opp.name;
           this.mySlot = msg.id || this.mySlot;
           this._helloOk = true;
+          this.online = true;
           if (msg.lobby) this._remoteLobby = msg.lobby;
           // Guest shares network report when joined
           if (this.role === 'guest') {
@@ -1285,16 +1335,11 @@
         case 'net_report':
           this.peerNetReport = msg.report || null;
           if (this.onLobby) this.onLobby();
-          // Host auto-start when both nets good and room has 2
-          if (
-            this.role === 'host' &&
-            !this._matchStarted &&
-            this.guestCount() >= 1 &&
-            this.bothNetOk()
-          ) {
+          // Host: if guest is in and match not started, start (net is soft info)
+          if (this.role === 'host' && !this._matchStarted && this.guestCount() >= 1) {
             setTimeout(() => {
               if (!this._matchStarted) this.beginMatch(this._pendingDiff);
-            }, 600);
+            }, 500);
           }
           break;
         case 'room_full':
@@ -1387,9 +1432,7 @@
       this._pendingDiff = diff || 'hard';
       this.send({ t: 'ready', diff: this._pendingDiff, name: this.myName() });
       if (this.role === 'host' && this.guestCount() >= 1) {
-        // Prefer stable net; host button can force after toast if needed
-        const forced = !this.bothNetOk();
-        this.beginMatch(this._pendingDiff, forced);
+        this.beginMatch(this._pendingDiff, true);
       }
     },
 
