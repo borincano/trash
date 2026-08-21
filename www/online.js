@@ -908,17 +908,94 @@
         code,
         peerId: meta.peerId || this.peerId || PEER_PREFIX + code,
         host,
-        title: String(meta.title || host + ' SQUAD').slice(0, 24),
+        title: String(meta.title || host + ' VS').slice(0, 24),
         diff: meta.diff || 'hard',
         status: players >= MAX_ROOM_PLAYERS ? 'full' : 'open',
         players,
         maxPlayers: MAX_ROOM_PLAYERS,
         ts: Date.now(),
       };
-      await firestoreUpsertRoom(room);
+      // Production: upsert + verify visible in list (retry once)
+      let lastErr = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          room.ts = Date.now();
+          await firestoreUpsertRoom(room);
+          await new Promise((r) => setTimeout(r, 200 + attempt * 150));
+          const check = await this.listRooms();
+          if (check.some((r) => r.code === code)) {
+            this.publishedRoom = room;
+            this.startRoomHeartbeat();
+            this.startLinkMonitor();
+            return room;
+          }
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      // Still publish even if list lag — room doc exists
+      try {
+        await firestoreUpsertRoom(room);
+      } catch (e) {
+        throw lastErr || e;
+      }
       this.publishedRoom = room;
       this.startRoomHeartbeat();
+      this.startLinkMonitor();
       return room;
+    },
+
+    /** Live RTT/bitrate between peers during lobby + match */
+    startLinkMonitor() {
+      this.stopLinkMonitor();
+      this._linkStats = { rtt: 0, loss: 0, sent: 0, recv: 0, bitrateKbps: 0, quality: 'ok' };
+      this._linkBeat = setInterval(() => {
+        const alive =
+          this.vsActive ||
+          this.status === 'connected' ||
+          this.status === 'waiting' ||
+          this.status === 'hosting';
+        if (!alive) {
+          this.stopLinkMonitor();
+          return;
+        }
+        // Only ping when a peer link exists
+        if (this.role === 'guest' && !(this.conn && this.conn.open)) return;
+        if (this.role === 'host' && this.guestCount() < 1) return;
+        const id = 'p' + Date.now();
+        this._pingMap = this._pingMap || {};
+        this._pingMap[id] = performance.now();
+        this._linkStats.sent++;
+        this.send({ t: 'net_ping', id, ts: Date.now() });
+        Object.keys(this._pingMap).forEach((k) => {
+          if (performance.now() - this._pingMap[k] > 2000) {
+            delete this._pingMap[k];
+            this._linkStats.loss = (this._linkStats.loss || 0) + 1;
+          }
+        });
+        this._updateLinkQuality();
+        if (this.onLinkStats) this.onLinkStats(this._linkStats);
+      }, 2000);
+    },
+
+    stopLinkMonitor() {
+      if (this._linkBeat) {
+        clearInterval(this._linkBeat);
+        this._linkBeat = null;
+      }
+    },
+
+    _updateLinkQuality() {
+      const s = this._linkStats || {};
+      const rtt = s.rtt || 0;
+      let q = 'ok';
+      if (rtt > 0 && rtt <= 100 && (s.loss || 0) < 2) q = 'excellent';
+      else if (rtt > 0 && rtt <= 220 && (s.loss || 0) < 4) q = 'good';
+      else if (rtt > 350 || (s.loss || 0) >= 6) q = 'weak';
+      s.quality = q;
+      // Suggest sync interval to game layer
+      s.suggestSyncMs = q === 'excellent' ? 75 : q === 'good' ? 95 : q === 'ok' ? 120 : 150;
+      this.linkQuality = q;
     },
 
     startRoomHeartbeat() {
@@ -1000,11 +1077,21 @@
     ensurePeerScript() {
       return new Promise((resolve, reject) => {
         if (global.Peer) return resolve();
-        const s = document.createElement('script');
-        s.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error('PeerJS load failed'));
-        document.head.appendChild(s);
+        const cdns = [
+          'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+          'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
+          'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
+        ];
+        let i = 0;
+        const tryNext = () => {
+          if (i >= cdns.length) return reject(new Error('PeerJS load failed (all CDNs)'));
+          const s = document.createElement('script');
+          s.src = cdns[i++];
+          s.onload = () => resolve();
+          s.onerror = () => tryNext();
+          document.head.appendChild(s);
+        };
+        tryNext();
       });
     },
 
@@ -1030,15 +1117,33 @@
     },
 
     peerOptions() {
-      // Default PeerJS cloud + STUN (works on HTTPS web + Capacitor)
+      // Production ICE: multiple STUN + public TURN fallbacks for mobile NATs
       return {
         debug: 0,
+        secure: true,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:global.stun.twilio.com:3478' },
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject',
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject',
+              credential: 'openrelayproject',
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+              username: 'openrelayproject',
+              credential: 'openrelayproject',
+            },
           ],
+          iceCandidatePoolSize: 4,
         },
       };
     },
@@ -1335,6 +1440,7 @@
         case 'net_report':
           this.peerNetReport = msg.report || null;
           if (this.onLobby) this.onLobby();
+          if (this.onLinkStats && this._linkStats) this.onLinkStats(this._linkStats);
           // Host: if guest is in and match not started, start (net is soft info)
           if (this.role === 'host' && !this._matchStarted && this.guestCount() >= 1) {
             setTimeout(() => {
@@ -1342,8 +1448,29 @@
             }, 500);
           }
           break;
+        case 'net_ping':
+          this.sendTo(conn || this.conn, { t: 'net_pong', id: msg.id, ts: Date.now() });
+          break;
+        case 'net_pong':
+          if (this._pingMap && msg.id && this._pingMap[msg.id] != null) {
+            const rtt = performance.now() - this._pingMap[msg.id];
+            delete this._pingMap[msg.id];
+            this._linkStats = this._linkStats || {};
+            this._linkStats.recv = (this._linkStats.recv || 0) + 1;
+            this._linkStats.rtt = Math.round(
+              this._linkStats.rtt ? this._linkStats.rtt * 0.7 + rtt * 0.3 : rtt
+            );
+            // Rough bitrate estimate from world packet sizes if known
+            if (this._lastWorldBytes && this._linkStats.rtt) {
+              const bps = (this._lastWorldBytes * 8 * 1000) / Math.max(50, this._linkStats.rtt);
+              this._linkStats.bitrateKbps = Math.round(bps / 1000);
+            }
+            this._updateLinkQuality();
+            if (this.onLinkStats) this.onLinkStats(this._linkStats);
+          }
+          break;
         case 'room_full':
-          if (typeof Toast !== 'undefined') Toast.show('ROOM FULL (4)', 'pink');
+          if (typeof Toast !== 'undefined') Toast.show('ROOM FULL (2)', 'pink');
           this.status = 'error';
           if (this.onLobby) this.onLobby();
           break;
@@ -1456,6 +1583,11 @@
       if (!this.vsActive || this.role !== 'host') return;
       // packVsWorld already sets t:'world' — send as-is (avoid extra clone cost)
       if (!world.t) world.t = 'world';
+      try {
+        this._lastWorldBytes = JSON.stringify(world).length;
+      } catch (e) {
+        this._lastWorldBytes = 1500;
+      }
       this.broadcast(world);
     },
 
@@ -1489,6 +1621,7 @@
 
     destroyPeer(skipUnpublish) {
       this.stopRoomHeartbeat();
+      this.stopLinkMonitor();
       const code = this.roomCode || (this.publishedRoom && this.publishedRoom.code);
       if (!skipUnpublish && code && this.role === 'host' && !this._matchStarted) {
         this.unpublishRoom(code);

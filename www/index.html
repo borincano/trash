@@ -1853,10 +1853,11 @@ function updateVsHud(){
   if($('vsOppName'))$('vsOppName').textContent=o.name||(Online&&Online.opp&&Online.opp.name)||'OPP';
   if($('vsTimerHud'))$('vsTimerHud').textContent=Math.max(0,Math.ceil((GS.waveTime||0)/1000))+'s';
   if($('vsNetHud')&&typeof Online!=='undefined'){
-    const a=Online.netReport, b=Online.peerNetReport;
-    const me=a?a.label:'…';
-    const pe=b?b.quality.toUpperCase()+' · '+b.rtt+'ms':'…';
-    $('vsNetHud').textContent='NET YOU '+me+' · OPP '+pe;
+    const a=Online.netReport, b=Online.peerNetReport, L=Online._linkStats;
+    const live=L&&L.rtt?('LINK '+L.quality.toUpperCase()+' · '+L.rtt+'ms'+(L.bitrateKbps?(' · ~'+L.bitrateKbps+'kb/s'):'')):'';
+    const me=a?a.quality.toUpperCase():'…';
+    const pe=b?b.quality.toUpperCase():'…';
+    $('vsNetHud').textContent=(live||('NET '+me+' / '+pe));
   }
 }
 function initVsArena(){
@@ -2160,19 +2161,22 @@ const Game={
       if(isVsHost()){
         if(!this._vsSyncT)this._vsSyncT=0;
         this._vsSyncT+=dt;
-        // Adaptive tick: ~11 Hz default, slower under load
-        const interval=NetFX.syncMs||90;
+        // Adaptive tick from live link quality + entity load
+        let interval=NetFX.syncMs||90;
+        if(Online._linkStats&&Online._linkStats.suggestSyncMs) interval=Online._linkStats.suggestSyncMs;
         if(this._vsSyncT>=interval){
           this._vsSyncT=0;
-          // Cap bullets on host for net bandwidth
-          if(GS.bullets.length>40) GS.bullets.length=40;
-          if(GS.eBullets.length>28) GS.eBullets.length=28;
+          // Cap bullets on host for net bandwidth (QoS)
+          const weak=Online.linkQuality==='weak';
+          if(GS.bullets.length>(weak?24:40)) GS.bullets.length=weak?24:40;
+          if(GS.eBullets.length>(weak?16:28)) GS.eBullets.length=weak?16:28;
+          if(weak&&GS.enemies.length>14) GS.enemies.length=14;
           Online.sendWorld(packVsWorld());
           if(!this._hudAcc||this._hudAcc>150){updateVsHud();this._hudAcc=0;}
           this._hudAcc=(this._hudAcc||0)+interval;
-          // Adapt: if many enemies, slow sync slightly
           const load=GS.enemies.length+GS.bullets.length*.3;
-          NetFX.syncMs=clamp(70+load*1.2,70,130);
+          const linkPad=weak?30:(Online.linkQuality==='excellent'?0:10);
+          NetFX.syncMs=clamp(70+load*1.2+linkPad,70,160);
         }
       }
       // Super Survival: no early objective end — fight full timer or KO
@@ -3063,13 +3067,23 @@ async function joinListedRoom(room){
     const label=(room&&room.title)||(room&&room.host)||'room';
     if($('roomsStatus'))$('roomsStatus').textContent='Joining '+label+'…';
     Toast.show('JOINING…','ok');
-    // Soft online check
     try{ await Online.probeNetwork(); }catch(e){}
-    await Online.joinRoom(room);
-    if(room.diff&&$('vsDiff'))$('vsDiff').value=room.diff;
+    // Production: refresh room from cloud so peerId is fresh
+    let fresh=room;
+    try{
+      const list=await Online.listRooms();
+      const hit=list.find(r=>r.code===(room.code||room.id));
+      if(hit) fresh=hit;
+      else throw new Error('Room expired — refresh list');
+    }catch(e){
+      if(String(e.message||'').indexOf('expired')>=0) throw e;
+    }
+    await Online.joinRoom(fresh);
+    if(fresh.diff&&$('vsDiff'))$('vsDiff').value=fresh.diff;
     Toast.show('JOINED · ONLINE','ok');
     if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · joined multi';
     Online.shareNetReport();
+    Online.startLinkMonitor && Online.startLinkMonitor();
     updateVsStatus();
     refreshLobbyNetUI();
     renderRoomsList();
@@ -3275,6 +3289,7 @@ function wireUI(){
       }
     };
     Online.onSync=()=>updateVsHud();
+    Online.onLinkStats=()=>{ updateVsHud(); refreshLobbyNetUI(); };
     Online.onDisconnect=()=>{
       updateVsStatus();
       if(GS.mode==='vs'&&Engine.running&&!GS.vsEnded) Game.endVs('disconnect');

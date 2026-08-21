@@ -1,5 +1,5 @@
 /* MUZZ GALAXY lightweight service worker — offline shell */
-const CACHE = 'muzz-galaxy-v4-online-fix';
+const CACHE = 'muzz-galaxy-v5-prod';
 const ASSETS = ['./', './index.html', './online.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './ios-install.html'];
 
 self.addEventListener('install', (e) => {
