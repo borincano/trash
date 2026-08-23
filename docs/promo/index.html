@@ -21,11 +21,15 @@
   --muted:rgba(200,230,255,.62);--line:rgba(0,232,255,.28);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
+html{scroll-behavior:smooth;height:100%}
 body{
   font-family:Rajdhani,system-ui,sans-serif;background:var(--bg);color:var(--text);
   overflow-x:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  min-height:100%;
 }
+/* When embedded in GoDaddy iframe */
+html.embed,html.embed body{height:100%;min-height:100%;overflow-x:hidden}
+html.embed .hero{min-height:auto;padding-top:clamp(16px,3vw,28px)}
 img,video{pointer-events:none;-webkit-user-drag:none;user-select:none}
 a,button,.btn{pointer-events:auto;-webkit-user-select:none}
 .bg{
@@ -370,6 +374,14 @@ footer a{color:var(--c);text-decoration:none}
 <script>
 (function () {
   'use strict';
+
+  try {
+    if (window.self !== window.top || /embed=1/.test(location.search)) {
+      document.documentElement.classList.add('embed');
+    }
+  } catch (e) {
+    document.documentElement.classList.add('embed');
+  }
 
   var I18N = {
     en: {
