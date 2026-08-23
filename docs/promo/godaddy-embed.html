@@ -1,27 +1,4 @@
-﻿<!-- Pega ESTO en GoDaddy Website Builder â†’ Add Section â†’ HTML -->
+﻿<!-- GoDaddy HTML section: landing stays on GH Pages; Play opens Vercel game -->
 <div style="width:100%;margin:0;padding:0;background:#04040c;">
-  <iframe
-    src="https://borincano.github.io/trash/docs/promo/?v=i18n1"
-    title="MUZZ GALAXY SURVIVOR"
-    style="width:100%;height:100vh;min-height:720px;max-height:none;border:0;display:block;background:#04040c;"
-    loading="eager"
-    referrerpolicy="no-referrer-when-downgrade"
-    allow="fullscreen"
-  ></iframe>
+  <iframe src="https://borincano.github.io/trash/docs/promo/?v=vercel1" title="MUZZ GALAXY" style="width:100%;height:100vh;min-height:720px;border:0;display:block;background:#04040c;" loading="eager" allow="fullscreen"></iframe>
 </div>
-<script>
-(function () {
-  // Auto-grow iframe height for mobile GoDaddy pages when possible
-  try {
-    var f = document.querySelector('iframe[title="MUZZ GALAXY SURVIVOR"]');
-    if (!f) return;
-    function fit() {
-      var h = Math.max(window.innerHeight || 720, 720);
-      f.style.height = h + 'px';
-    }
-    fit();
-    window.addEventListener('resize', fit);
-  } catch (e) {}
-})();
-</script>
-

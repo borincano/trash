@@ -10,7 +10,9 @@
     "sync": "npx cap sync android",
     "open:android": "npx cap open android",
     "build:android": "npx cap sync android && node scripts/apply-android-icons.mjs",
-    "apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1"
+    "apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1",
+    "build:protected": "node scripts/build-protected.mjs",
+    "deploy:game": "node scripts/build-protected.mjs && npx vercel deploy dist-protected --prod --yes --scope borincanoprs-projects"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
@@ -19,7 +21,10 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
+    "html-minifier-terser": "^7.2.0",
+    "javascript-obfuscator": "^5.6.0",
     "playwright": "^1.62.1",
-    "sharp": "^0.34.3"
+    "sharp": "^0.34.3",
+    "terser": "^5.50.0"
   }
 }
