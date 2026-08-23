@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#04040c">
-<meta name="description" content="MUZZ GALAXY — Cyberpunk timed assault shooter. Career, Endless, Daily Ops, Events, Online VS.">
+<meta name="description" content="MUZZ GALAXY SURVIVOR — Space survival shooter. Career, Endless, Daily Ops, Events, Online VS.">
 <meta name="robots" content="index,follow">
-<meta property="og:title" content="MUZZ GALAXY">
-<meta property="og:description" content="Console-hard mobile shooter. 60s waves. No mercy.">
+<meta property="og:title" content="MUZZ GALAXY SURVIVOR">
+<meta property="og:description" content="MUZZ GALAXY SURVIVOR — 60s wave survival. Play on Web / PC.">
 <meta property="og:image" content="media/01-title.png">
 <title>MUZZ GALAXY — Official</title>
 <link rel="icon" href="media/logo-192.png">
@@ -63,36 +63,63 @@ nav{
 .btn[disabled],.btn.is-off{
   opacity:.42;cursor:not-allowed;filter:grayscale(.35);pointer-events:none;transform:none!important;
 }
-.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:center;padding:42px 5vw 28px;min-height:min(86vh,880px)}
-@media(max-width:960px){.hero{grid-template-columns:1fr;min-height:auto;padding-top:24px}}
-.eyebrow{font-family:Orbitron,sans-serif;font-size:.62rem;letter-spacing:.28em;color:var(--m);margin-bottom:12px}
+.hero{
+  display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(20px,4vw,36px);align-items:center;
+  padding:clamp(20px,4vw,42px) 5vw clamp(16px,3vw,28px);min-height:min(86vh,880px);
+}
+@media(max-width:960px){
+  .hero{grid-template-columns:1fr;min-height:auto;padding-top:18px;text-align:center}
+  .lead{margin-left:auto;margin-right:auto}
+  .stats{margin-left:auto;margin-right:auto}
+  .cta-row{justify-content:center}
+  .nav-r .btn{padding:10px 12px;font-size:.62rem}
+  .brand{font-size:.72rem}
+  .brand img{width:32px;height:32px}
+  section{padding:36px 4vw}
+}
 h1{
-  font-family:Orbitron,sans-serif;font-weight:900;font-size:clamp(2.1rem,5.2vw,3.6rem);line-height:1.05;letter-spacing:.05em;
+  font-family:Orbitron,sans-serif;font-weight:900;font-size:clamp(1.85rem,6.2vw,3.4rem);line-height:1.08;letter-spacing:.06em;
   background:linear-gradient(180deg,#fff 8%,var(--c) 52%,var(--m) 100%);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
 }
-.lead{margin:14px 0 20px;font-size:clamp(1.05rem,2vw,1.22rem);color:var(--muted);line-height:1.55;max-width:38ch}
+.lead{margin:14px 0 20px;font-size:clamp(1rem,2.4vw,1.22rem);color:var(--muted);line-height:1.55;max-width:40ch}
 .cta-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:440px}
 .stat{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px}
-.stat b{display:block;font-family:Orbitron,sans-serif;color:var(--y);font-size:1.05rem}
+.stat b{display:block;font-family:Orbitron,sans-serif;color:var(--y);font-size:clamp(.95rem,2.5vw,1.05rem)}
 .stat span{font-size:.78rem;color:var(--muted)}
 .key{
   display:inline-block;margin-top:14px;padding:6px 12px;border:1px solid var(--y);color:var(--y);
   font-family:Orbitron,sans-serif;font-size:.68rem;letter-spacing:.16em;border-radius:6px;
 }
-.phone-wrap{position:relative;max-width:340px;margin:0 auto}
-.glow{position:absolute;inset:-18%;background:radial-gradient(circle,rgba(0,232,255,.18),transparent 62%);filter:blur(18px);z-index:-1}
+.phone-wrap{position:relative;width:min(100%,340px);margin:0 auto}
+.glow{position:absolute;inset:-18%;background:radial-gradient(circle,rgba(0,232,255,.22),transparent 62%);filter:blur(18px);z-index:-1}
 .phone{
-  position:relative;border-radius:28px;overflow:hidden;border:2px solid var(--line);
-  box-shadow:0 0 48px rgba(0,232,255,.22),0 28px 70px rgba(0,0,0,.55);aspect-ratio:9/16;background:#000;
+  position:relative;border-radius:24px;overflow:hidden;border:2px solid var(--line);
+  box-shadow:0 0 48px rgba(0,232,255,.22),0 28px 70px rgba(0,0,0,.55);
+  aspect-ratio:1/1;background:
+    radial-gradient(circle at 50% 42%,rgba(0,232,255,.16),transparent 55%),
+    linear-gradient(165deg,#0a1020 0%,#04040c 55%,#120818 100%);
+  display:flex;align-items:center;justify-content:center;padding:clamp(18px,5vw,36px);
 }
-.phone img{width:100%;height:100%;object-fit:cover;display:block}
+.phone img{width:100%;height:100%;max-width:280px;object-fit:contain;display:block;filter:drop-shadow(0 0 28px rgba(0,232,255,.45))}
 .badge{
   position:absolute;left:12px;bottom:12px;background:rgba(0,0,0,.7);border:1px solid var(--y);
   color:var(--y);font-family:Orbitron,sans-serif;font-size:.52rem;letter-spacing:.14em;padding:6px 10px;border-radius:6px;
 }
-section{padding:54px 5vw}
+section{padding:clamp(36px,6vw,54px) 5vw}
+.nft-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:800px){.nft-grid{grid-template-columns:1fr}}
+.nft{
+  background:var(--card);border:1px dashed rgba(255,208,0,.35);border-radius:16px;padding:18px;
+  position:relative;overflow:hidden;
+}
+.nft::before{
+  content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 0%,rgba(255,208,0,.08),transparent 50%);pointer-events:none;
+}
+.nft h3{font-family:Orbitron,sans-serif;font-size:.78rem;letter-spacing:.1em;color:var(--y);margin:8px 0}
+.nft p{color:var(--muted);font-size:.92rem;line-height:1.45;position:relative}
+.nft .ship{width:72px;height:72px;object-fit:contain;filter:drop-shadow(0 0 12px rgba(0,232,255,.4))}
 .sec-h{font-family:Orbitron,sans-serif;font-size:clamp(1.2rem,2.8vw,1.85rem);letter-spacing:.12em;color:var(--c);margin-bottom:8px}
 .sec-p{color:var(--muted);max-width:62ch;margin-bottom:26px;font-size:1.05rem;line-height:1.5}
 .platforms{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
@@ -161,16 +188,15 @@ footer a{color:var(--c);text-decoration:none}
 
   <header class="hero" id="top">
     <div>
-      <div class="eyebrow">CYBERPUNK TIMED ASSAULT</div>
-      <h1>60 SECONDS.<br>NO MERCY.</h1>
+      <h1>MUZZGALAXY<br>SURVIVOR</h1>
       <p class="lead">
-        MUZZ GALAXY es un shooter cyberpunk de asaltos cronometrados: oleadas de 60s, amenaza que sube cada 10s,
-        objetivos de score brutales y meta de Career · Garage · Online VS. Capturas 100% del juego real.
+        MUZZ GALAXY es un shooter espacial de supervivencia con oleadas cronometradas: presión cada 10s,
+        objetivos de score, Career · Garage · Online VS. Capturas 100% del juego real.
       </p>
       <div class="cta-row">
-        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">▶ JUGAR EN WEB</a>
-        <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1" title="APK próximamente">⬇ ANDROID APK</a>
-        <a class="btn btn-g" href="https://borincano.github.io/trash/docs/ios-install.html" target="_blank" rel="noopener">iPHONE PWA</a>
+        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">▶ JUGAR WEB / PC</a>
+        <a class="btn btn-g is-off" href="#" aria-disabled="true" tabindex="-1" title="iOS próximamente">IOS</a>
+        <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1" title="Android próximamente">ANDROID</a>
       </div>
       <div class="stats">
         <div class="stat"><b>60s</b><span>Por oleada</span></div>
@@ -182,33 +208,33 @@ footer a{color:var(--c);text-decoration:none}
     <div class="phone-wrap">
       <div class="glow"></div>
       <div class="phone">
-        <img src="media/01-title.png" alt="MUZZ GALAXY intro / title screen" width="720" height="1280">
-        <div class="badge">INTRO · TITLE SCREEN</div>
+        <img src="media/logo.png" alt="MUZZ GALAXY ship logo" width="512" height="512">
+        <div class="badge">OFFICIAL LOGO</div>
       </div>
     </div>
   </header>
 
   <section id="platforms">
     <h2 class="sec-h">VERSIONES DISPONIBLES</h2>
-    <p class="sec-p">Juega donde quieras. Misma identidad visual cyberpunk en móvil y PC.</p>
+    <p class="sec-p">Ahora mismo solo Web / PC está activo. iOS y Android llegarán en releases futuros.</p>
     <div class="platforms">
       <article class="plat">
         <span class="tag tag-on">AVAILABLE</span>
-        <h3>💻 PC / WEB</h3>
-        <p>Juega al instante en el navegador (Chrome, Edge, Brave, Safari). Ideal para desktop y laptop. Clave de acceso: <b style="color:var(--y)">2025</b>.</p>
-        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">ABRIR PC / WEB</a>
-      </article>
-      <article class="plat">
-        <span class="tag tag-on">AVAILABLE</span>
-        <h3>📱 iOS (iPhone)</h3>
-        <p>PWA instalable desde Safari: Añadir a pantalla de inicio. Controles táctiles y HUD pensados para móvil.</p>
-        <a class="btn btn-g" href="https://borincano.github.io/trash/docs/ios-install.html" target="_blank" rel="noopener">GUÍA iPHONE</a>
+        <h3>💻 WEB / PC</h3>
+        <p>Juega al instante en el navegador (Chrome, Edge, Brave, Safari). Desktop, laptop y móvil por navegador. Clave: <b style="color:var(--y)">2025</b>.</p>
+        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">JUGAR WEB / PC</a>
       </article>
       <article class="plat">
         <span class="tag tag-soon">COMING SOON</span>
-        <h3>🤖 ANDROID APK</h3>
-        <p>Build nativo Capacitor en preparación. El botón de descarga está desactivado hasta el release público.</p>
-        <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1">DESCARGAR APK · OFF</a>
+        <h3>📱 IOS</h3>
+        <p>App / PWA para iPhone en preparación. El acceso iOS está desactivado en esta página hasta el lanzamiento.</p>
+        <a class="btn btn-g is-off" href="#" aria-disabled="true" tabindex="-1">IOS</a>
+      </article>
+      <article class="plat">
+        <span class="tag tag-soon">COMING SOON</span>
+        <h3>🤖 ANDROID</h3>
+        <p>APK nativo Capacitor en preparación. Descarga desactivada hasta el release público.</p>
+        <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1">ANDROID</a>
       </article>
     </div>
   </section>
@@ -270,7 +296,7 @@ footer a{color:var(--c);text-decoration:none}
 
   <section id="how">
     <h2 class="sec-h">CÓMO FUNCIONA</h2>
-    <p class="sec-p">Loop de combate diseñado para móvil flagship: corto, intenso, legible.</p>
+    <p class="sec-p">Loop de combate corto, intenso y legible — pensado para pantallas táctiles y PC.</p>
     <div class="how">
       <div class="steps">
         <div class="step"><b>01</b><p>Entras al <b style="color:var(--c)">Command Hub</b> (intro → access key → home).</p></div>
@@ -288,7 +314,7 @@ footer a{color:var(--c);text-decoration:none}
 
   <section id="gallery">
     <h2 class="sec-h">CAPTURAS REALES</h2>
-    <p class="sec-p">Tomadas del build HTML5 / Android en vivo — no mockups.</p>
+    <p class="sec-p">Tomadas del build HTML5 en vivo — no mockups.</p>
     <div class="gallery">
       <figure><img src="media/01-title.png" alt="Title intro" loading="lazy"></figure>
       <figure><img src="media/02-hub.png" alt="Hub modes" loading="lazy"></figure>
@@ -301,13 +327,42 @@ footer a{color:var(--c);text-decoration:none}
     </div>
   </section>
 
+  <section id="nft">
+    <h2 class="sec-h">FUTURO · NFT NAVES</h2>
+    <p class="sec-p">
+      Próximamente: colección de naves NFT de pago con tokens. Cosméticos / ships exclusivos para pilots.
+      <b style="color:var(--y)">No hay compras activas ahora</b> — solo roadmap.
+    </p>
+    <div class="nft-grid">
+      <article class="nft">
+        <span class="tag tag-soon">ROADMAP</span>
+        <img class="ship" src="media/logo.png" alt="NFT ship concept" width="72" height="72">
+        <h3>SHIP NFTs</h3>
+        <p>Naves coleccionables on-chain. Skins y rarezas para Garage. Compra futura con tokens del ecosistema MUZZ.</p>
+      </article>
+      <article class="nft">
+        <span class="tag tag-soon">ROADMAP</span>
+        <img class="ship" src="media/logo.png" alt="Token utility" width="72" height="72">
+        <h3>TOKEN UTILITY</h3>
+        <p>Pagar naves / upgrades cosméticos con tokens. Sin pagos habilitados en esta fase — diseño listo para activar después.</p>
+      </article>
+      <article class="nft">
+        <span class="tag tag-soon">ROADMAP</span>
+        <img class="ship" src="media/logo.png" alt="Pilot ownership" width="72" height="72">
+        <h3>OWN YOUR FLEET</h3>
+        <p>Wallet connect (ya en stub del juego) + ownership de naves. iOS / Android y mint se anunciarán en @DevsMuzz.</p>
+      </article>
+    </div>
+  </section>
+
   <div class="cta-band">
-    <h2>LISTO PARA EL ASALTO</h2>
-    <p>Web y iPhone listos. Android APK desactivado hasta el release. Síguenos en X.</p>
+    <h2>LISTO PARA SOBREVIVIR</h2>
+    <p>Solo Web / PC activo. IOS y ANDROID desactivados. NFT naves = futuro. Síguenos en X.</p>
     <div class="cta-row" style="justify-content:center">
-      <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">▶ PLAY NOW</a>
+      <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">▶ JUGAR WEB / PC</a>
       <a class="btn btn-x" href="https://x.com/DevsMuzz" target="_blank" rel="noopener noreferrer">𝕏 DevsMuzz</a>
-      <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1">APK DESACTIVADO</a>
+      <a class="btn btn-g is-off" href="#" aria-disabled="true" tabindex="-1">IOS</a>
+      <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1">ANDROID</a>
     </div>
   </div>
 
