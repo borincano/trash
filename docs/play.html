@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#04040c">
-<meta name="description" content="MUZZ GALAXY — Commercial cyberpunk shooter. Career, Garage, Events. Flagship mobile.">
+<meta name="description" content="MUZZ GALAXY SURVIVOR — Space survival shooter. Career, Garage, Events, Online VS.">
 <meta name="application-name" content="MUZZ GALAXY">
 <meta name="apple-mobile-web-app-title" content="MUZZ GALAXY">
 <title>MUZZ GALAXY</title>
@@ -29,6 +29,24 @@
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Rajdhani,system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+/* App-style chrome (fullscreen / PWA). Cannot replace real OS browser chrome without install. */
+#appChrome{
+  position:fixed;top:0;left:0;right:0;z-index:12000;height:calc(28px + var(--safe-t));
+  padding:var(--safe-t) 10px 0;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:linear-gradient(180deg,rgba(6,10,24,.94),rgba(6,10,24,.72));border-bottom:1px solid rgba(0,232,255,.22);
+  backdrop-filter:blur(10px);opacity:0;pointer-events:none;transition:opacity .2s;
+}
+body.app-fs #appChrome,body.standalone #appChrome{opacity:1;pointer-events:auto}
+body.app-fs,body.standalone{--safe-t-extra:28px}
+#appChrome .ac-title{font-family:Orbitron,sans-serif;font-size:.55rem;letter-spacing:.16em;color:var(--c);opacity:.9}
+#appChrome .ac-btns{display:flex;gap:6px;margin-left:auto}
+#appChrome .ac-btn{
+  width:28px;height:20px;border-radius:5px;border:1px solid rgba(0,232,255,.28);background:rgba(0,232,255,.08);
+  color:var(--c);font-size:.7rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  font-family:Orbitron,sans-serif;padding:0;
+}
+#appChrome .ac-btn:hover{background:rgba(0,232,255,.18)}
+#appChrome .ac-btn.close{border-color:rgba(255,45,155,.4);color:var(--m)}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #bgCanvas{z-index:0}#gameCanvas{z-index:1}#fxCanvas{z-index:2;pointer-events:none;mix-blend-mode:screen}
 #dangerVig{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(255,20,50,.4) 100%);transition:opacity .25s}
@@ -283,6 +301,14 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 <canvas id="gameCanvas"></canvas>
 <canvas id="fxCanvas"></canvas>
 <div id="dangerVig"></div>
+<div id="appChrome" aria-label="App window controls">
+  <div class="ac-title">MUZZ GALAXY</div>
+  <div class="ac-btns">
+    <button type="button" class="ac-btn" id="acMin" title="Exit fullscreen">─</button>
+    <button type="button" class="ac-btn" id="acMax" title="Toggle fullscreen">▢</button>
+    <button type="button" class="ac-btn close" id="acClose" title="Close app view">✕</button>
+  </div>
+</div>
 
 <!-- STUDIO -->
 <div id="studioSplash">
@@ -320,9 +346,10 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div class="gate-card">
     <h2>SECURE ACCESS</h2>
     <p>Enter pilot authorization key to open the Command Network.</p>
-    <input class="input" type="password" id="passwordInput" placeholder="ACCESS KEY" maxlength="12" autocomplete="off">
+    <input class="input" type="password" id="passwordInput" placeholder="ACCESS KEY" maxlength="24" autocomplete="off" spellcheck="false">
     <button class="btn cyan" id="accessBtn" style="width:100%">AUTHORIZE</button>
     <div class="err" id="pwErr">ACCESS DENIED</div>
+    <p style="margin-top:12px;font-size:.72rem;color:var(--muted);letter-spacing:.04em;text-align:center">Early access · authorized pilots only</p>
   </div>
 </div>
 
@@ -615,6 +642,8 @@ const hashStr=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i
 
 /*════════ DATA ════════*/
 const SAVE_KEY='muzzgalaxy_commercial_v1';
+const ACCESS_KEY='2@26!';
+const ACCESS_VER=2;
 const RANKS=[
   {name:'ROOKIE',min:1,c:'#88aacc'},{name:'PILOT',min:4,c:'#00e8ff'},{name:'ACE',min:7,c:'#00ff9a'},
   {name:'ELITE',min:10,c:'#a020f0'},{name:'PHANTOM',min:13,c:'#ff2d9b'},{name:'LEGEND',min:16,c:'#ff6a00'},
@@ -692,7 +721,7 @@ const Meta={
   dailyDate:'', dailyDone:false, dailyNcClaimed:'',
   loginDate:'', loginStreak:0, loginClaimedDay:-1,
   life:{kills:0,bosses:0,runs:0},
-  tutDone:false, accessOk:false,
+  tutDone:false, accessOk:false, accessVer:0,
   quality:'high', sfx:.75, music:.45, haptics:true, shake:true, showFps:false,
   load(){
     try{const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'{}');Object.assign(this,d);}catch(e){}
@@ -703,6 +732,8 @@ const Meta={
     if(!this.life) this.life={kills:0,bosses:0,runs:0};
     if(this.points==null) this.points=this.highScore||0;
     if(this.vsKills==null) this.vsKills=0;
+    // Invalidate old access keys when ACCESS_VER bumps
+    if((this.accessVer|0)!==ACCESS_VER){this.accessOk=false;this.accessVer=0;}
     if(this.dailyDate!==todayKey()){this.dailyDone=false;this.dailyDate=todayKey();}
     this.processLogin();
     this.syncForms();
@@ -729,7 +760,7 @@ const Meta={
       ach:this.ach,board:this.board.slice(0,20),career:this.career,
       dailyDate:this.dailyDate,dailyDone:this.dailyDone,dailyNcClaimed:this.dailyNcClaimed,
       loginDate:this.loginDate,loginStreak:this.loginStreak,loginClaimedDay:this.loginClaimedDay,
-      life:this.life,tutDone:this.tutDone,accessOk:this.accessOk,
+      life:this.life,tutDone:this.tutDone,accessOk:this.accessOk,accessVer:this.accessVer|0,
       quality:this.quality,sfx:this.sfx,music:this.music,haptics:this.haptics,shake:this.shake,showFps:this.showFps
     }));
     UIHome.refresh();
@@ -3178,6 +3209,56 @@ function startBoot(){
   tick();
 }
 
+/* Fullscreen app chrome — browsers block auto-FS without a user gesture.
+   Minimize = exit FS · Maximize = toggle FS · Close = exit FS + title screen.
+   Real OS browser address bar only hides in installed PWA / successful fullscreen. */
+const AppShell={
+  isFs(){return !!(document.fullscreenElement||document.webkitFullscreenElement);},
+  sync(){
+    const fs=this.isFs();
+    document.body.classList.toggle('app-fs',fs);
+    const standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
+    document.body.classList.toggle('standalone',!!standalone);
+  },
+  async enter(){
+    try{
+      const el=document.documentElement;
+      if(this.isFs()) return true;
+      if(el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});
+      else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      this.sync();
+      return this.isFs();
+    }catch(e){
+      // Auto-fullscreen blocked until gesture / policy — chrome still available after FS
+      this.sync();
+      return false;
+    }
+  },
+  async exit(){
+    try{
+      if(document.exitFullscreen) await document.exitFullscreen();
+      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }catch(e){}
+    this.sync();
+  },
+  async toggle(){ if(this.isFs()) await this.exit(); else await this.enter(); },
+  wire(){
+    this.sync();
+    document.addEventListener('fullscreenchange',()=>this.sync());
+    document.addEventListener('webkitfullscreenchange',()=>this.sync());
+    if($('acMin'))$('acMin').onclick=()=>this.exit();
+    if($('acMax'))$('acMax').onclick=()=>this.toggle();
+    if($('acClose'))$('acClose').onclick=async()=>{
+      await this.exit();
+      try{Engine.stop();}catch(e){}
+      try{UI.gameUI(false);}catch(e){}
+      ['home','pageCareer','pageGarage','pageShop','pageSocial','pageRank','pageVs','pageVsRooms','pageSettings','gateScreen','gameOverMenu','pauseOverlay','upgradeScreen'].forEach(id=>{const n=$(id);if(n)n.classList.remove('on');});
+      if($('botnav'))$('botnav').style.display='none';
+      if($('titleScreen'))$('titleScreen').classList.add('on');
+    };
+  }
+};
+
 function wireUI(){
   const unlock=()=>{AudioSys.unlock();AudioSys.resume();};
   document.body.addEventListener('pointerdown',unlock,{once:true});
@@ -3185,6 +3266,7 @@ function wireUI(){
 
   $('btnEnter').onclick=()=>{
     unlock();
+    AppShell.enter();
     if(Meta.accessOk){showHome();}
     else{$('gateScreen').classList.add('on');}
   };
@@ -3194,16 +3276,19 @@ function wireUI(){
   $('passwordInput').onkeydown=e=>{if(e.key==='Enter')tryAccess();};
   function tryAccess(){
     unlock();
-    if($('passwordInput').value==='2025'){
-      Meta.accessOk=true;Meta.save();
+    const typed=String($('passwordInput').value||'');
+    if(typed===ACCESS_KEY){
+      Meta.accessOk=true;Meta.accessVer=ACCESS_VER;Meta.save();
       $('gateScreen').classList.remove('on');
       $('titleScreen').classList.remove('on');
+      AppShell.enter();
       showHome();
     } else {
       $('pwErr').classList.add('on');setTimeout(()=>$('pwErr').classList.remove('on'),700);
       $('passwordInput').value='';haptic(40);
     }
   }
+  AppShell.wire();
 
   // bottom nav
   document.querySelectorAll('.nav-item').forEach(btn=>{

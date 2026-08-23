@@ -28,7 +28,7 @@ Target quality band: **9.0 – 9.5 / 10** for live-ops mobile/web.
 | GitHub Pages | https://borincano.github.io/trash/docs/play.html |
 | Android APK | `dist/MUZZ-GALAXY-debug.apk` / `D:\MUZZ-GALAXY\apk\` |
 
-Access key: `2025`
+Access key: `2@26!` (not shown on marketing site)
 
 ## Non-goals (kept for later, not removed)
 - Native App Store IPA (needs Mac + Apple Developer)
