@@ -30,7 +30,7 @@ cd "C:\Users\borin\OneDrive\Desktop\muzz-galaxy-app"
 
 git init
 git add .
-git commit -m "MUZZ GALAXY commercial edition + Android project"
+git commit -m "MUZZ GALAXY Survivor Edition + Android project"
 
 git branch -M main
 git remote add origin https://github.com/TU_USUARIO/muzz-galaxy.git
