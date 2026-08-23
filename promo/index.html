@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -9,7 +9,7 @@
 <meta property="og:title" content="MUZZ GALAXY SURVIVOR">
 <meta property="og:description" content="MUZZ GALAXY SURVIVOR — 60s wave survival. Play on Web / PC.">
 <meta property="og:image" content="media/01-title.png">
-<title>MUZZ GALAXY — Official</title>
+<title>MUZZ GALAXY SURVIVOR — Official</title>
 <link rel="icon" href="media/logo-192.png">
 <link rel="apple-touch-icon" href="media/logo-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,9 +24,7 @@
 html{scroll-behavior:smooth}
 body{
   font-family:Rajdhani,system-ui,sans-serif;background:var(--bg);color:var(--text);
-  overflow-x:hidden;
-  -webkit-user-select:none;user-select:none;
-  -webkit-touch-callout:none;
+  overflow-x:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
 }
 img,video{pointer-events:none;-webkit-user-drag:none;user-select:none}
 a,button,.btn{pointer-events:auto;-webkit-user-select:none}
@@ -50,6 +48,21 @@ nav{
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--c);font-family:Orbitron,sans-serif;font-weight:900;letter-spacing:.14em;font-size:.82rem}
 .brand img{width:38px;height:38px;border-radius:11px;box-shadow:0 0 18px rgba(0,232,255,.45)}
 .nav-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.lang{position:relative}
+.lang-btn{
+  background:rgba(0,232,255,.08);border:1px solid var(--line);color:var(--c);padding:10px 12px;border-radius:8px;
+  cursor:pointer;font-family:Orbitron,sans-serif;font-size:.62rem;letter-spacing:.1em;
+}
+.lang-menu{
+  display:none;position:absolute;right:0;top:110%;min-width:150px;background:var(--card);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);z-index:70;
+}
+.lang-menu.on{display:block}
+.lang-menu button{
+  display:block;width:100%;text-align:left;padding:10px 14px;background:transparent;border:none;
+  color:var(--text);cursor:pointer;font-size:.9rem;font-family:Rajdhani,sans-serif;
+}
+.lang-menu button:hover,.lang-menu button.active{background:rgba(0,232,255,.12);color:var(--c)}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 18px;border-radius:9px;
   text-decoration:none;font-family:Orbitron,sans-serif;font-weight:800;font-size:.7rem;letter-spacing:.12em;
@@ -60,19 +73,16 @@ nav{
 .btn-m{background:linear-gradient(135deg,var(--m),#b01068);color:#fff}
 .btn-g{background:transparent;border:1.5px solid var(--line);color:var(--c)}
 .btn-x{background:#000;border:1px solid rgba(255,255,255,.2);color:#fff}
-.btn[disabled],.btn.is-off{
-  opacity:.42;cursor:not-allowed;filter:grayscale(.35);pointer-events:none;transform:none!important;
-}
+.btn[disabled],.btn.is-off{opacity:.42;cursor:not-allowed;filter:grayscale(.35);pointer-events:none;transform:none!important}
 .hero{
   display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(20px,4vw,36px);align-items:center;
   padding:clamp(20px,4vw,42px) 5vw clamp(16px,3vw,28px);min-height:min(86vh,880px);
 }
 @media(max-width:960px){
   .hero{grid-template-columns:1fr;min-height:auto;padding-top:18px;text-align:center}
-  .lead{margin-left:auto;margin-right:auto}
-  .stats{margin-left:auto;margin-right:auto}
+  .lead,.stats{margin-left:auto;margin-right:auto}
   .cta-row{justify-content:center}
-  .nav-r .btn{padding:10px 12px;font-size:.62rem}
+  .nav-r .btn,.lang-btn{padding:10px 12px;font-size:.62rem}
   .brand{font-size:.72rem}
   .brand img{width:32px;height:32px}
   section{padding:36px 4vw}
@@ -82,7 +92,7 @@ h1{
   background:linear-gradient(180deg,#fff 8%,var(--c) 52%,var(--m) 100%);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
 }
-.lead{margin:14px 0 20px;font-size:clamp(1rem,2.4vw,1.22rem);color:var(--muted);line-height:1.55;max-width:40ch}
+.lead{margin:14px 0 20px;font-size:clamp(1rem,2.4vw,1.22rem);color:var(--muted);line-height:1.55;max-width:42ch}
 .cta-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:440px}
 .stat{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px}
@@ -96,10 +106,8 @@ h1{
 .glow{position:absolute;inset:-18%;background:radial-gradient(circle,rgba(0,232,255,.22),transparent 62%);filter:blur(18px);z-index:-1}
 .phone{
   position:relative;border-radius:24px;overflow:hidden;border:2px solid var(--line);
-  box-shadow:0 0 48px rgba(0,232,255,.22),0 28px 70px rgba(0,0,0,.55);
-  aspect-ratio:1/1;background:
-    radial-gradient(circle at 50% 42%,rgba(0,232,255,.16),transparent 55%),
-    linear-gradient(165deg,#0a1020 0%,#04040c 55%,#120818 100%);
+  box-shadow:0 0 48px rgba(0,232,255,.22),0 28px 70px rgba(0,0,0,.55);aspect-ratio:1/1;
+  background:radial-gradient(circle at 50% 42%,rgba(0,232,255,.16),transparent 55%),linear-gradient(165deg,#0a1020 0%,#04040c 55%,#120818 100%);
   display:flex;align-items:center;justify-content:center;padding:clamp(18px,5vw,36px);
 }
 .phone img{width:100%;height:100%;max-width:280px;object-fit:contain;display:block;filter:drop-shadow(0 0 28px rgba(0,232,255,.45))}
@@ -110,13 +118,8 @@ h1{
 section{padding:clamp(36px,6vw,54px) 5vw}
 .nft-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 @media(max-width:800px){.nft-grid{grid-template-columns:1fr}}
-.nft{
-  background:var(--card);border:1px dashed rgba(255,208,0,.35);border-radius:16px;padding:18px;
-  position:relative;overflow:hidden;
-}
-.nft::before{
-  content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 0%,rgba(255,208,0,.08),transparent 50%);pointer-events:none;
-}
+.nft{background:var(--card);border:1px dashed rgba(255,208,0,.35);border-radius:16px;padding:18px;position:relative;overflow:hidden}
+.nft::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 0%,rgba(255,208,0,.08),transparent 50%);pointer-events:none}
 .nft h3{font-family:Orbitron,sans-serif;font-size:.78rem;letter-spacing:.1em;color:var(--y);margin:8px 0}
 .nft p{color:var(--muted);font-size:.92rem;line-height:1.45;position:relative}
 .nft .ship{width:72px;height:72px;object-fit:contain;filter:drop-shadow(0 0 12px rgba(0,232,255,.4))}
@@ -124,31 +127,21 @@ section{padding:clamp(36px,6vw,54px) 5vw}
 .sec-p{color:var(--muted);max-width:62ch;margin-bottom:26px;font-size:1.05rem;line-height:1.5}
 .platforms{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 @media(max-width:800px){.platforms{grid-template-columns:1fr}}
-.plat{
-  background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;
-  display:flex;flex-direction:column;gap:10px;min-height:180px;
-}
+.plat{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:10px;min-height:180px}
 .plat h3{font-family:Orbitron,sans-serif;font-size:.78rem;letter-spacing:.12em;color:var(--y)}
 .plat p{color:var(--muted);font-size:.95rem;line-height:1.45;flex:1}
 .tag{display:inline-block;padding:4px 8px;border-radius:999px;font-family:Orbitron,sans-serif;font-size:.55rem;letter-spacing:.12em}
 .tag-on{background:rgba(0,255,154,.12);color:var(--g);border:1px solid rgba(0,255,154,.35)}
 .tag-soon{background:rgba(255,208,0,.1);color:var(--y);border:1px solid rgba(255,208,0,.35)}
-.tag-off{background:rgba(255,45,155,.1);color:var(--m);border:1px solid rgba(255,45,155,.3)}
 .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 @media(max-width:980px){.modes{grid-template-columns:1fr 1fr}}
 @media(max-width:640px){.modes{grid-template-columns:1fr}}
-.mode{
-  background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;
-  transition:border-color .2s,transform .2s;
-}
+.mode{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:16px;overflow:hidden;transition:border-color .2s,transform .2s}
 .mode:hover{border-color:var(--line);transform:translateY(-3px)}
 .mode .shot{aspect-ratio:9/16;max-height:280px;overflow:hidden;background:#000}
 .mode .shot img{width:100%;height:100%;object-fit:cover;display:block}
 .mode .body{padding:14px 16px 16px}
-.mode .mc-badge{
-  display:inline-block;margin-bottom:6px;padding:3px 8px;border-radius:4px;
-  font-family:Orbitron,sans-serif;font-size:.52rem;letter-spacing:.12em;background:rgba(0,232,255,.12);color:var(--c);
-}
+.mode .mc-badge{display:inline-block;margin-bottom:6px;padding:3px 8px;border-radius:4px;font-family:Orbitron,sans-serif;font-size:.52rem;letter-spacing:.12em;background:rgba(0,232,255,.12);color:var(--c)}
 .mode h3{font-family:Orbitron,sans-serif;font-size:.82rem;letter-spacing:.1em;color:var(--c);margin-bottom:6px}
 .mode p{color:var(--muted);font-size:.92rem;line-height:1.45}
 .how{display:grid;grid-template-columns:1.1fr .9fr;gap:22px;align-items:center}
@@ -181,74 +174,80 @@ footer a{color:var(--c);text-decoration:none}
   <nav>
     <a class="brand" href="#top"><img src="media/logo-192.png" alt="MUZZ GALAXY" width="38" height="38">MUZZ GALAXY</a>
     <div class="nav-r">
+      <div class="lang">
+        <button class="lang-btn" id="langBtn" type="button">EN ▾</button>
+        <div class="lang-menu" id="langMenu">
+          <button type="button" data-lang="en" class="active">English</button>
+          <button type="button" data-lang="es">Español</button>
+          <button type="button" data-lang="zh">中文</button>
+          <button type="button" data-lang="ja">日本語</button>
+        </div>
+      </div>
       <a class="btn btn-x" href="https://x.com/DevsMuzz" target="_blank" rel="noopener noreferrer">𝕏 @DevsMuzz</a>
-      <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">PLAY</a>
+      <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener" data-i18n="nav_play">PLAY</a>
     </div>
   </nav>
 
   <header class="hero" id="top">
     <div>
       <h1>MUZZGALAXY<br>SURVIVOR</h1>
-      <p class="lead">
-        MUZZ GALAXY es un shooter espacial de supervivencia con oleadas cronometradas: presión cada 10s,
-        objetivos de score, Career · Garage · Online VS. Capturas 100% del juego real.
-      </p>
+      <p class="lead" data-i18n="hero_lead">MUZZ GALAXY is a space survival shooter with timed waves: pressure ramps every 10s, hard score goals, Career · Garage · Online VS. 100% real game captures.</p>
       <div class="cta-row">
-        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">▶ JUGAR WEB / PC</a>
-        <a class="btn btn-g is-off" href="#" aria-disabled="true" tabindex="-1" title="iOS próximamente">IOS</a>
-        <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1" title="Android próximamente">ANDROID</a>
+        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener" data-i18n="cta_web">▶ PLAY WEB / PC</a>
+        <a class="btn btn-g is-off" href="#" aria-disabled="true" tabindex="-1" data-i18n-title="soon_ios" title="iOS coming soon">IOS</a>
+        <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1" data-i18n-title="soon_android" title="Android coming soon">ANDROID</a>
       </div>
       <div class="stats">
-        <div class="stat"><b>60s</b><span>Por oleada</span></div>
-        <div class="stat"><b>6</b><span>Modos de juego</span></div>
-        <div class="stat"><b>10k</b><span>Meta VS race</span></div>
+        <div class="stat"><b>60s</b><span data-i18n="stat1">Per wave</span></div>
+        <div class="stat"><b>6</b><span data-i18n="stat2">Game modes</span></div>
+        <div class="stat"><b>10k</b><span data-i18n="stat3">VS race goal</span></div>
       </div>
-      <div class="key">ACCESS KEY WEB: 2025</div>
+      <div class="key" data-i18n="access_key">ACCESS KEY WEB: 2025</div>
     </div>
     <div class="phone-wrap">
       <div class="glow"></div>
       <div class="phone">
         <img src="media/logo.png" alt="MUZZ GALAXY ship logo" width="512" height="512">
-        <div class="badge">OFFICIAL LOGO</div>
+        <div class="badge" data-i18n="logo_badge">OFFICIAL LOGO</div>
       </div>
     </div>
   </header>
 
   <section id="platforms">
-    <h2 class="sec-h">VERSIONES DISPONIBLES</h2>
-    <p class="sec-p">Ahora mismo solo Web / PC está activo. iOS y Android llegarán en releases futuros.</p>
+    <h2 class="sec-h" data-i18n="plat_h">AVAILABLE VERSIONS</h2>
+    <p class="sec-p" data-i18n="plat_p">Only Web / PC is live right now. iOS and Android will ship in future releases.</p>
     <div class="platforms">
       <article class="plat">
-        <span class="tag tag-on">AVAILABLE</span>
+        <span class="tag tag-on" data-i18n="tag_avail">AVAILABLE</span>
         <h3>💻 WEB / PC</h3>
-        <p>Juega al instante en el navegador (Chrome, Edge, Brave, Safari). Desktop, laptop y móvil por navegador. Clave: <b style="color:var(--y)">2025</b>.</p>
-        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">JUGAR WEB / PC</a>
+        <p data-i18n="plat_web">Play instantly in the browser (Chrome, Edge, Brave, Safari). Desktop, laptop, and mobile browser. Key: <b style="color:var(--y)">2025</b>.</p>
+        <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener" data-i18n="cta_web_short">PLAY WEB / PC</a>
       </article>
       <article class="plat">
-        <span class="tag tag-soon">COMING SOON</span>
+        <span class="tag tag-soon" data-i18n="tag_soon">COMING SOON</span>
         <h3>📱 IOS</h3>
-        <p>App / PWA para iPhone en preparación. El acceso iOS está desactivado en esta página hasta el lanzamiento.</p>
+        <p data-i18n="plat_ios">iPhone app / PWA in preparation. iOS access is disabled on this page until launch.</p>
         <a class="btn btn-g is-off" href="#" aria-disabled="true" tabindex="-1">IOS</a>
       </article>
       <article class="plat">
-        <span class="tag tag-soon">COMING SOON</span>
+        <span class="tag tag-soon" data-i18n="tag_soon">COMING SOON</span>
         <h3>🤖 ANDROID</h3>
-        <p>APK nativo Capacitor en preparación. Descarga desactivada hasta el release público.</p>
+        <p data-i18n="plat_android">Native Capacitor APK in preparation. Download disabled until public release.</p>
         <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1">ANDROID</a>
       </article>
     </div>
   </section>
 
   <section id="modes">
-    <h2 class="sec-h">MODOS DE JUEGO</h2>
-    <p class="sec-p">Desde el Command Hub eliges tu asalto. Cada modo usa la misma arena brutal con reglas distintas.</p>
+    <h2 class="sec-h" data-i18n="modes_h">GAME MODES</h2>
+    <p class="sec-p" data-i18n="modes_p">Pick your assault from the Command Hub. Every mode shares the same brutal arena with different rules.</p>
     <div class="modes">
       <article class="mode">
         <div class="shot"><img src="media/02-hub.png" alt="Command Hub" loading="lazy"></div>
         <div class="body">
           <span class="mc-badge">MAIN</span>
           <h3>CAREER</h3>
-          <p>Campaña por sectores con estrellas y progresión. Completa objetivos de oleada, sube de sector y desbloquea recompensas.</p>
+          <p data-i18n="mode_career">Sector campaign with star ratings and progression. Clear wave goals, push sectors, unlock rewards.</p>
         </div>
       </article>
       <article class="mode">
@@ -256,7 +255,7 @@ footer a{color:var(--c);text-decoration:none}
         <div class="body">
           <span class="mc-badge">SURVIVE</span>
           <h3>ENDLESS</h3>
-          <p>Oleadas infinitas. Cada 60s el goal de score sube. Aguanta el ramp de amenaza y busca high score.</p>
+          <p data-i18n="mode_endless">Infinite waves. Score goals rise every 60s. Survive the threat ramp and chase high scores.</p>
         </div>
       </article>
       <article class="mode">
@@ -264,7 +263,7 @@ footer a{color:var(--c);text-decoration:none}
         <div class="body">
           <span class="mc-badge">24H</span>
           <h3>DAILY OPS</h3>
-          <p>Contrato diario único. Misma dificultad para todos ese día. Reclama MC / recompensas al completar.</p>
+          <p data-i18n="mode_daily">One shared daily contract. Same challenge for everyone that day. Claim MC / rewards on clear.</p>
         </div>
       </article>
       <article class="mode">
@@ -272,7 +271,7 @@ footer a{color:var(--c);text-decoration:none}
         <div class="body">
           <span class="mc-badge">HARD</span>
           <h3>EVENT</h3>
-          <p>Rush Nightmare de alta recompensa. Más presión, más score, más riesgo. Para pilots listos.</p>
+          <p data-i18n="mode_event">Nightmare rush with high rewards. More pressure, more score, more risk. For ready pilots.</p>
         </div>
       </article>
       <article class="mode">
@@ -280,7 +279,7 @@ footer a{color:var(--c);text-decoration:none}
         <div class="body">
           <span class="mc-badge">ONLINE</span>
           <h3>SUPER SURVIVAL (VS)</h3>
-          <p>1v1 online: misma arena, first to 10,000 o mejor score a los 90s. Rooms list, create / join, QoS adaptivo.</p>
+          <p data-i18n="mode_vs">Online 1v1: shared arena, first to 10,000 or best score at 90s. Room list, create / join, adaptive QoS.</p>
         </div>
       </article>
       <article class="mode">
@@ -288,23 +287,23 @@ footer a{color:var(--c);text-decoration:none}
         <div class="body">
           <span class="mc-badge">META</span>
           <h3>GARAGE + GLOBAL RANK</h3>
-          <p>Mejora ships y perks con MC / Neural Cores. Compite en ranking Survivor y VS a nivel global.</p>
+          <p data-i18n="mode_garage">Upgrade ships and perks with MC / Neural Cores. Compete on Survivor and VS global boards.</p>
         </div>
       </article>
     </div>
   </section>
 
   <section id="how">
-    <h2 class="sec-h">CÓMO FUNCIONA</h2>
-    <p class="sec-p">Loop de combate corto, intenso y legible — pensado para pantallas táctiles y PC.</p>
+    <h2 class="sec-h" data-i18n="how_h">HOW IT WORKS</h2>
+    <p class="sec-p" data-i18n="how_p">A short, intense, readable combat loop — built for touch screens and PC.</p>
     <div class="how">
       <div class="steps">
-        <div class="step"><b>01</b><p>Entras al <b style="color:var(--c)">Command Hub</b> (intro → access key → home).</p></div>
-        <div class="step"><b>02</b><p>Eliges modo: Career, Endless, Daily, Event u Online VS.</p></div>
-        <div class="step"><b>03</b><p>Cada oleada dura <b style="color:var(--y)">60 segundos</b>. Debes alcanzar el score objetivo.</p></div>
-        <div class="step"><b>04</b><p>Cada 10s sube la amenaza: más spawns, elites, bosses y fuego enemigo.</p></div>
-        <div class="step"><b>05</b><p>Entre oleadas eliges upgrades. En Garage mejoras ships y perks permanentes.</p></div>
-        <div class="step"><b>06</b><p>Online VS: crea o únete a room, pelea 1v1 first-to-10k / 90s.</p></div>
+        <div class="step"><b>01</b><p data-i18n="how_1">Enter the <b style="color:var(--c)">Command Hub</b> (intro → access key → home).</p></div>
+        <div class="step"><b>02</b><p data-i18n="how_2">Choose a mode: Career, Endless, Daily, Event, or Online VS.</p></div>
+        <div class="step"><b>03</b><p data-i18n="how_3">Each wave lasts <b style="color:var(--y)">60 seconds</b>. Hit the score objective.</p></div>
+        <div class="step"><b>04</b><p data-i18n="how_4">Every 10s threat rises: denser spawns, elites, bosses, enemy fire.</p></div>
+        <div class="step"><b>05</b><p data-i18n="how_5">Between waves pick upgrades. In Garage unlock permanent ships and perks.</p></div>
+        <div class="step"><b>06</b><p data-i18n="how_6">Online VS: create or join a room, fight 1v1 first-to-10k / 90s.</p></div>
       </div>
       <div class="how-media">
         <img src="media/06-combat-wide.png" alt="Gameplay combat wide" loading="lazy">
@@ -313,8 +312,8 @@ footer a{color:var(--c);text-decoration:none}
   </section>
 
   <section id="gallery">
-    <h2 class="sec-h">CAPTURAS REALES</h2>
-    <p class="sec-p">Tomadas del build HTML5 en vivo — no mockups.</p>
+    <h2 class="sec-h" data-i18n="gal_h">REAL CAPTURES</h2>
+    <p class="sec-p" data-i18n="gal_p">Shot from the live HTML5 build — not mockups.</p>
     <div class="gallery">
       <figure><img src="media/01-title.png" alt="Title intro" loading="lazy"></figure>
       <figure><img src="media/02-hub.png" alt="Hub modes" loading="lazy"></figure>
@@ -328,38 +327,35 @@ footer a{color:var(--c);text-decoration:none}
   </section>
 
   <section id="nft">
-    <h2 class="sec-h">FUTURO · NFT NAVES</h2>
-    <p class="sec-p">
-      Próximamente: colección de naves NFT de pago con tokens. Cosméticos / ships exclusivos para pilots.
-      <b style="color:var(--y)">No hay compras activas ahora</b> — solo roadmap.
-    </p>
+    <h2 class="sec-h" data-i18n="nft_h">FUTURE · SHIP NFTs</h2>
+    <p class="sec-p" data-i18n="nft_p">Coming later: paid ship NFT collection with tokens. Exclusive cosmetics / ships for pilots. <b style="color:var(--y)">No purchases active now</b> — roadmap only.</p>
     <div class="nft-grid">
       <article class="nft">
-        <span class="tag tag-soon">ROADMAP</span>
+        <span class="tag tag-soon" data-i18n="tag_roadmap">ROADMAP</span>
         <img class="ship" src="media/logo.png" alt="NFT ship concept" width="72" height="72">
         <h3>SHIP NFTs</h3>
-        <p>Naves coleccionables on-chain. Skins y rarezas para Garage. Compra futura con tokens del ecosistema MUZZ.</p>
+        <p data-i18n="nft_1">Collectible on-chain ships. Skins and rarities for Garage. Future purchase with MUZZ ecosystem tokens.</p>
       </article>
       <article class="nft">
-        <span class="tag tag-soon">ROADMAP</span>
+        <span class="tag tag-soon" data-i18n="tag_roadmap">ROADMAP</span>
         <img class="ship" src="media/logo.png" alt="Token utility" width="72" height="72">
         <h3>TOKEN UTILITY</h3>
-        <p>Pagar naves / upgrades cosméticos con tokens. Sin pagos habilitados en esta fase — diseño listo para activar después.</p>
+        <p data-i18n="nft_2">Pay for ships / cosmetic upgrades with tokens. Payments off in this phase — design ready to enable later.</p>
       </article>
       <article class="nft">
-        <span class="tag tag-soon">ROADMAP</span>
+        <span class="tag tag-soon" data-i18n="tag_roadmap">ROADMAP</span>
         <img class="ship" src="media/logo.png" alt="Pilot ownership" width="72" height="72">
         <h3>OWN YOUR FLEET</h3>
-        <p>Wallet connect (ya en stub del juego) + ownership de naves. iOS / Android y mint se anunciarán en @DevsMuzz.</p>
+        <p data-i18n="nft_3">Wallet connect (stub already in-game) + ship ownership. iOS / Android and mint will be announced on @DevsMuzz.</p>
       </article>
     </div>
   </section>
 
   <div class="cta-band">
-    <h2>LISTO PARA SOBREVIVIR</h2>
-    <p>Solo Web / PC activo. IOS y ANDROID desactivados. NFT naves = futuro. Síguenos en X.</p>
+    <h2 data-i18n="cta_h">READY TO SURVIVE</h2>
+    <p data-i18n="cta_p">Web / PC only for now. IOS and ANDROID disabled. Ship NFTs = future. Follow us on X.</p>
     <div class="cta-row" style="justify-content:center">
-      <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener">▶ JUGAR WEB / PC</a>
+      <a class="btn btn-c" href="https://borincano.github.io/trash/docs/play.html" target="_blank" rel="noopener" data-i18n="cta_web">▶ PLAY WEB / PC</a>
       <a class="btn btn-x" href="https://x.com/DevsMuzz" target="_blank" rel="noopener noreferrer">𝕏 DevsMuzz</a>
       <a class="btn btn-g is-off" href="#" aria-disabled="true" tabindex="-1">IOS</a>
       <a class="btn btn-m is-off" href="#" aria-disabled="true" tabindex="-1">ANDROID</a>
@@ -368,29 +364,256 @@ footer a{color:var(--c);text-decoration:none}
 
   <footer>
     <div>© MUZZ GALAXY · <a href="https://x.com/DevsMuzz" target="_blank" rel="noopener">@DevsMuzz</a></div>
-    <div class="protect-note">Contenido protegido · capturas del juego oficial · no redistribuir assets</div>
+    <div class="protect-note" data-i18n="footer_note">Protected content · official game captures · do not redistribute assets</div>
   </footer>
 </div>
 <script>
-(function(){
+(function () {
   'use strict';
-  // Soft deterrents only — nothing on the web can fully hide source.
-  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
-  document.addEventListener('dragstart', function(e){ e.preventDefault(); });
-  document.addEventListener('keydown', function(e){
+
+  var I18N = {
+    en: {
+      nav_play: 'PLAY',
+      hero_lead: 'MUZZ GALAXY is a space survival shooter with timed waves: pressure ramps every 10s, hard score goals, Career · Garage · Online VS. 100% real game captures.',
+      cta_web: '▶ PLAY WEB / PC',
+      cta_web_short: 'PLAY WEB / PC',
+      soon_ios: 'iOS coming soon',
+      soon_android: 'Android coming soon',
+      stat1: 'Per wave',
+      stat2: 'Game modes',
+      stat3: 'VS race goal',
+      access_key: 'ACCESS KEY WEB: 2025',
+      logo_badge: 'OFFICIAL LOGO',
+      plat_h: 'AVAILABLE VERSIONS',
+      plat_p: 'Only Web / PC is live right now. iOS and Android will ship in future releases.',
+      tag_avail: 'AVAILABLE',
+      tag_soon: 'COMING SOON',
+      tag_roadmap: 'ROADMAP',
+      plat_web: 'Play instantly in the browser (Chrome, Edge, Brave, Safari). Desktop, laptop, and mobile browser. Key: <b style="color:var(--y)">2025</b>.',
+      plat_ios: 'iPhone app / PWA in preparation. iOS access is disabled on this page until launch.',
+      plat_android: 'Native Capacitor APK in preparation. Download disabled until public release.',
+      modes_h: 'GAME MODES',
+      modes_p: 'Pick your assault from the Command Hub. Every mode shares the same brutal arena with different rules.',
+      mode_career: 'Sector campaign with star ratings and progression. Clear wave goals, push sectors, unlock rewards.',
+      mode_endless: 'Infinite waves. Score goals rise every 60s. Survive the threat ramp and chase high scores.',
+      mode_daily: 'One shared daily contract. Same challenge for everyone that day. Claim MC / rewards on clear.',
+      mode_event: 'Nightmare rush with high rewards. More pressure, more score, more risk. For ready pilots.',
+      mode_vs: 'Online 1v1: shared arena, first to 10,000 or best score at 90s. Room list, create / join, adaptive QoS.',
+      mode_garage: 'Upgrade ships and perks with MC / Neural Cores. Compete on Survivor and VS global boards.',
+      how_h: 'HOW IT WORKS',
+      how_p: 'A short, intense, readable combat loop — built for touch screens and PC.',
+      how_1: 'Enter the <b style="color:var(--c)">Command Hub</b> (intro → access key → home).',
+      how_2: 'Choose a mode: Career, Endless, Daily, Event, or Online VS.',
+      how_3: 'Each wave lasts <b style="color:var(--y)">60 seconds</b>. Hit the score objective.',
+      how_4: 'Every 10s threat rises: denser spawns, elites, bosses, enemy fire.',
+      how_5: 'Between waves pick upgrades. In Garage unlock permanent ships and perks.',
+      how_6: 'Online VS: create or join a room, fight 1v1 first-to-10k / 90s.',
+      gal_h: 'REAL CAPTURES',
+      gal_p: 'Shot from the live HTML5 build — not mockups.',
+      nft_h: 'FUTURE · SHIP NFTs',
+      nft_p: 'Coming later: paid ship NFT collection with tokens. Exclusive cosmetics / ships for pilots. <b style="color:var(--y)">No purchases active now</b> — roadmap only.',
+      nft_1: 'Collectible on-chain ships. Skins and rarities for Garage. Future purchase with MUZZ ecosystem tokens.',
+      nft_2: 'Pay for ships / cosmetic upgrades with tokens. Payments off in this phase — design ready to enable later.',
+      nft_3: 'Wallet connect (stub already in-game) + ship ownership. iOS / Android and mint will be announced on @DevsMuzz.',
+      cta_h: 'READY TO SURVIVE',
+      cta_p: 'Web / PC only for now. IOS and ANDROID disabled. Ship NFTs = future. Follow us on X.',
+      footer_note: 'Protected content · official game captures · do not redistribute assets'
+    },
+    es: {
+      nav_play: 'JUGAR',
+      hero_lead: 'MUZZ GALAXY es un shooter espacial de supervivencia con oleadas cronometradas: presión cada 10s, objetivos de score, Career · Garage · Online VS. Capturas 100% del juego real.',
+      cta_web: '▶ JUGAR WEB / PC',
+      cta_web_short: 'JUGAR WEB / PC',
+      soon_ios: 'iOS próximamente',
+      soon_android: 'Android próximamente',
+      stat1: 'Por oleada',
+      stat2: 'Modos de juego',
+      stat3: 'Meta VS race',
+      access_key: 'CLAVE WEB: 2025',
+      logo_badge: 'LOGO OFICIAL',
+      plat_h: 'VERSIONES DISPONIBLES',
+      plat_p: 'Ahora mismo solo Web / PC está activo. iOS y Android llegarán en releases futuros.',
+      tag_avail: 'DISPONIBLE',
+      tag_soon: 'PRÓXIMAMENTE',
+      tag_roadmap: 'ROADMAP',
+      plat_web: 'Juega al instante en el navegador (Chrome, Edge, Brave, Safari). Desktop, laptop y móvil. Clave: <b style="color:var(--y)">2025</b>.',
+      plat_ios: 'App / PWA para iPhone en preparación. El acceso iOS está desactivado hasta el lanzamiento.',
+      plat_android: 'APK nativo Capacitor en preparación. Descarga desactivada hasta el release público.',
+      modes_h: 'MODOS DE JUEGO',
+      modes_p: 'Desde el Command Hub eliges tu asalto. Cada modo usa la misma arena con reglas distintas.',
+      mode_career: 'Campaña por sectores con estrellas y progresión. Completa objetivos, sube de sector y desbloquea recompensas.',
+      mode_endless: 'Oleadas infinitas. El goal de score sube cada 60s. Aguanta la amenaza y busca high score.',
+      mode_daily: 'Contrato diario único. Misma dificultad para todos ese día. Reclama MC / recompensas al completar.',
+      mode_event: 'Rush Nightmare de alta recompensa. Más presión, más score, más riesgo.',
+      mode_vs: '1v1 online: misma arena, first to 10,000 o mejor score a los 90s. Lista de rooms, create / join, QoS adaptivo.',
+      mode_garage: 'Mejora ships y perks con MC / Neural Cores. Compite en ranking Survivor y VS global.',
+      how_h: 'CÓMO FUNCIONA',
+      how_p: 'Loop de combate corto, intenso y legible — para táctil y PC.',
+      how_1: 'Entras al <b style="color:var(--c)">Command Hub</b> (intro → access key → home).',
+      how_2: 'Eliges modo: Career, Endless, Daily, Event u Online VS.',
+      how_3: 'Cada oleada dura <b style="color:var(--y)">60 segundos</b>. Debes alcanzar el score objetivo.',
+      how_4: 'Cada 10s sube la amenaza: más spawns, elites, bosses y fuego enemigo.',
+      how_5: 'Entre oleadas eliges upgrades. En Garage mejoras ships y perks permanentes.',
+      how_6: 'Online VS: crea o únete a room, pelea 1v1 first-to-10k / 90s.',
+      gal_h: 'CAPTURAS REALES',
+      gal_p: 'Tomadas del build HTML5 en vivo — no mockups.',
+      nft_h: 'FUTURO · NFT NAVES',
+      nft_p: 'Próximamente: colección de naves NFT de pago con tokens. Cosméticos / ships exclusivos. <b style="color:var(--y)">No hay compras activas ahora</b> — solo roadmap.',
+      nft_1: 'Naves coleccionables on-chain. Skins y rarezas para Garage. Compra futura con tokens del ecosistema MUZZ.',
+      nft_2: 'Pagar naves / upgrades cosméticos con tokens. Sin pagos en esta fase — listo para activar después.',
+      nft_3: 'Wallet connect (stub en el juego) + ownership de naves. iOS / Android y mint se anunciarán en @DevsMuzz.',
+      cta_h: 'LISTO PARA SOBREVIVIR',
+      cta_p: 'Solo Web / PC activo. IOS y ANDROID desactivados. NFT naves = futuro. Síguenos en X.',
+      footer_note: 'Contenido protegido · capturas oficiales · no redistribuir assets'
+    },
+    zh: {
+      nav_play: '开始',
+      hero_lead: 'MUZZ GALAXY 是一款限时波次太空生存射击游戏：每 10 秒压力升级，高分目标，生涯 · 机库 · 在线对战。全部为真实游戏截图。',
+      cta_web: '▶ 网页 / PC 游玩',
+      cta_web_short: '网页 / PC 游玩',
+      soon_ios: 'iOS 即将推出',
+      soon_android: 'Android 即将推出',
+      stat1: '每波时长',
+      stat2: '游戏模式',
+      stat3: '对战目标分',
+      access_key: '网页密钥：2025',
+      logo_badge: '官方标志',
+      plat_h: '可用版本',
+      plat_p: '目前仅网页 / PC 可用。iOS 与 Android 将在后续版本发布。',
+      tag_avail: '可用',
+      tag_soon: '即将推出',
+      tag_roadmap: '路线图',
+      plat_web: '在浏览器中即时游玩（Chrome、Edge、Brave、Safari）。桌面、笔记本与手机浏览器。密钥：<b style="color:var(--y)">2025</b>。',
+      plat_ios: 'iPhone 应用 / PWA 筹备中。上线前本页 iOS 入口已禁用。',
+      plat_android: '原生 Capacitor APK 筹备中。公开发布前下载已禁用。',
+      modes_h: '游戏模式',
+      modes_p: '在指挥中心选择你的突击。各模式共享同一残酷战场，规则不同。',
+      mode_career: '分区战役，星级与进度。完成波次目标，推进分区，解锁奖励。',
+      mode_endless: '无限波次。每 60 秒分数目标上升。扛住威胁升级，冲击高分。',
+      mode_daily: '每日共享合约。当天全员同一挑战。通关领取 MC / 奖励。',
+      mode_event: '噩梦冲刺，高额奖励。更高压力、更高分数、更高风险。',
+      mode_vs: '在线 1v1：共享战场，先到 10,000 或 90 秒最高分。房间列表、创建/加入、自适应网络。',
+      mode_garage: '用 MC / Neural Cores 升级飞船与天赋。冲击生存与对战全球榜。',
+      how_h: '玩法说明',
+      how_p: '短促、激烈、清晰的战斗循环 — 适配触控与 PC。',
+      how_1: '进入 <b style="color:var(--c)">指挥中心</b>（开场 → 密钥 → 主页）。',
+      how_2: '选择模式：生涯、无尽、每日、活动或在线对战。',
+      how_3: '每波持续 <b style="color:var(--y)">60 秒</b>。达成分数目标。',
+      how_4: '每 10 秒威胁上升：更多敌人、精英、Boss、敌方火力。',
+      how_5: '波次之间选择强化。在机库解锁永久飞船与天赋。',
+      how_6: '在线对战：创建或加入房间，1v1 先到 10k / 90 秒。',
+      gal_h: '真实截图',
+      gal_p: '来自线上 HTML5 构建 — 非概念图。',
+      nft_h: '未来 · 飞船 NFT',
+      nft_p: '后续计划：可用代币购买的飞船 NFT。飞行员专属外观 / 飞船。<b style="color:var(--y)">当前无购买</b> — 仅路线图。',
+      nft_1: '链上收藏飞船。机库皮肤与稀有度。未来用 MUZZ 生态代币购买。',
+      nft_2: '用代币支付飞船 / 外观升级。本阶段关闭支付 — 设计已就绪。',
+      nft_3: '钱包连接（游戏内已有雏形）+ 飞船所有权。iOS / Android 与铸造将在 @DevsMuzz 公布。',
+      cta_h: '准备生存',
+      cta_p: '目前仅网页 / PC。IOS 与 ANDROID 已禁用。飞船 NFT = 未来。关注我们的 X。',
+      footer_note: '受保护内容 · 官方游戏截图 · 请勿再分发素材'
+    },
+    ja: {
+      nav_play: 'プレイ',
+      hero_lead: 'MUZZ GALAXY は制限時間ウェーブの宇宙サバイバルシューター。10秒ごとに脅威上昇、スコア目標、キャリア · ガレージ · オンライン対戦。すべて実機キャプチャ。',
+      cta_web: '▶ WEB / PC でプレイ',
+      cta_web_short: 'WEB / PC でプレイ',
+      soon_ios: 'iOS 近日公開',
+      soon_android: 'Android 近日公開',
+      stat1: '1ウェーブ',
+      stat2: 'ゲームモード',
+      stat3: 'VS 目標',
+      access_key: 'WEB アクセスキー: 2025',
+      logo_badge: '公式ロゴ',
+      plat_h: '利用可能なバージョン',
+      plat_p: '現在は Web / PC のみ公開。iOS と Android は今後リリース予定。',
+      tag_avail: '利用可能',
+      tag_soon: '近日公開',
+      tag_roadmap: 'ロードマップ',
+      plat_web: 'ブラウザですぐプレイ（Chrome、Edge、Brave、Safari）。PC・ノート・モバイルブラウザ対応。キー: <b style="color:var(--y)">2025</b>。',
+      plat_ios: 'iPhone アプリ / PWA 準備中。公開までこのページの iOS は無効です。',
+      plat_android: 'Capacitor ネイティブ APK 準備中。公開までダウンロード無効。',
+      modes_h: 'ゲームモード',
+      modes_p: 'コマンドハブからアサルトを選択。各モードは同じ過酷アリーナでルールが異なります。',
+      mode_career: 'セクターキャンペーン。星評価と進行。ウェーブ目標を達成し、報酬を解放。',
+      mode_endless: '無限ウェーブ。60秒ごとにスコア目標が上昇。脅威に耐えハイスコアを狙う。',
+      mode_daily: '共有デイリー契約。その日全員同じ挑戦。クリアで MC / 報酬。',
+      mode_event: 'ナイトメアラッシュ高報酬。より高い圧力・スコア・リスク。',
+      mode_vs: 'オンライン 1v1：共有アリーナ、先に 10,000 または 90 秒最高スコア。ルーム作成 / 参加、適応 QoS。',
+      mode_garage: 'MC / Neural Cores で機体とパーク強化。サバイバー / VS グローバルランクに挑戦。',
+      how_h: '遊び方',
+      how_p: '短く激しく読みやすい戦闘ループ — タッチと PC 向け。',
+      how_1: '<b style="color:var(--c)">コマンドハブ</b>へ（イントロ → キー → ホーム）。',
+      how_2: 'モード選択：Career、Endless、Daily、Event、Online VS。',
+      how_3: '各ウェーブは <b style="color:var(--y)">60 秒</b>。スコア目標を達成。',
+      how_4: '10秒ごとに脅威上昇：スポーン増加、エリート、ボス、敵弾。',
+      how_5: 'ウェーブ間でアップグレード選択。ガレージで恒久強化。',
+      how_6: 'Online VS：ルーム作成 / 参加、1v1 first-to-10k / 90s。',
+      gal_h: '実機キャプチャ',
+      gal_p: 'ライブ HTML5 ビルドから撮影 — モックアップではありません。',
+      nft_h: '今後 · シップ NFT',
+      nft_p: '今後：トークン課金のシップ NFT。パイロット専用コスメ / 機体。<b style="color:var(--y)">現在購入不可</b> — ロードマップのみ。',
+      nft_1: 'オンチェーン収集機体。ガレージ用スキンとレア度。MUZZ エコシステム・トークンで将来購入。',
+      nft_2: 'トークンで機体 / コスメ強化を購入。この段階では決済オフ — 後で有効化可能な設計。',
+      nft_3: 'ウォレット接続（ゲーム内スタブ済み）+ 機体所有。iOS / Android とミントは @DevsMuzz で告知。',
+      cta_h: 'サバイバル準備完了',
+      cta_p: '現在は Web / PC のみ。IOS と ANDROID は無効。シップ NFT は今後。X でフォロー。',
+      footer_note: '保護コンテンツ · 公式キャプチャ · 素材の再配布禁止'
+    }
+  };
+
+  var LABELS = { en: 'EN', es: 'ES', zh: '中文', ja: '日本語' };
+  var langBtn = document.getElementById('langBtn');
+  var langMenu = document.getElementById('langMenu');
+
+  function applyLang(lang) {
+    var pack = I18N[lang] || I18N.en;
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (pack[key] != null) el.innerHTML = pack[key];
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n-title');
+      if (pack[key] != null) el.setAttribute('title', pack[key]);
+    });
+    langBtn.textContent = (LABELS[lang] || 'EN') + ' ▾';
+    langMenu.querySelectorAll('button[data-lang]').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-lang') === lang);
+    });
+    try { localStorage.setItem('muzz_promo_lang', lang); } catch (e) {}
+  }
+
+  langBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    langMenu.classList.toggle('on');
+  });
+  langMenu.querySelectorAll('button[data-lang]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      applyLang(b.getAttribute('data-lang'));
+      langMenu.classList.remove('on');
+    });
+  });
+  document.addEventListener('click', function () { langMenu.classList.remove('on'); });
+
+  var start = 'en';
+  try {
+    var saved = localStorage.getItem('muzz_promo_lang');
+    if (saved && I18N[saved]) start = saved;
+  } catch (e) {}
+  applyLang(start);
+
+  document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  document.addEventListener('dragstart', function (e) { e.preventDefault(); });
+  document.addEventListener('keydown', function (e) {
     var k = e.key || '';
     var ctrl = e.ctrlKey || e.metaKey;
     if (k === 'F12') { e.preventDefault(); return false; }
-    if (ctrl && (k === 'u' || k === 'U' || k === 's' || k === 'S' || k === 'p' || k === 'P')) {
-      e.preventDefault(); return false;
-    }
-    if (ctrl && e.shiftKey && (k === 'i' || k === 'I' || k === 'j' || k === 'J' || k === 'c' || k === 'C')) {
-      e.preventDefault(); return false;
-    }
+    if (ctrl && /^(u|U|s|S|p|P)$/.test(k)) { e.preventDefault(); return false; }
+    if (ctrl && e.shiftKey && /^(i|I|j|J|c|C)$/.test(k)) { e.preventDefault(); return false; }
   });
-  // Disabled APK anchors stay inert
-  document.querySelectorAll('a.is-off').forEach(function(a){
-    a.addEventListener('click', function(ev){ ev.preventDefault(); });
+  document.querySelectorAll('a.is-off').forEach(function (a) {
+    a.addEventListener('click', function (ev) { ev.preventDefault(); });
   });
 })();
 </script>
