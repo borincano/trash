@@ -12,7 +12,9 @@
     "build:android": "npx cap sync android && node scripts/apply-android-icons.mjs",
     "apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-apk.ps1",
     "build:protected": "node scripts/build-protected.mjs",
-    "deploy:game": "node scripts/build-protected.mjs && npx vercel deploy dist-protected --prod --yes --scope borincanoprs-projects"
+    "build:site": "node scripts/build-site.mjs",
+    "deploy:game": "node scripts/build-protected.mjs && npx vercel deploy dist-protected --prod --yes --scope borincanoprs-projects",
+    "deploy:site": "node scripts/build-site.mjs && npx vercel deploy dist-site --prod --yes --scope borincanoprs-projects --archive=tgz"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
