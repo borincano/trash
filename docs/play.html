@@ -501,7 +501,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
     </div>
 
     <div id="roomsMineBox" style="display:none;margin-bottom:14px;padding:12px;border:1px solid rgba(255,208,0,.4);border-radius:12px;background:rgba(255,208,0,.08)">
-      <div style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">YOUR ROOM · LIVE</div>
+      <div id="roomsMineTitle" style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">LOBBY · LIVE</div>
       <div id="vsLobbyInfo" style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,232,255,.75);line-height:1.55;margin-bottom:10px"></div>
       <div class="chip" id="vsLobbyNet" style="margin-bottom:8px">Waiting for opponent net…</div>
       <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-bottom:8px" disabled>FIGHT · START</button>
@@ -2991,33 +2991,52 @@ function updateVsStatus(){
   if(typeof Online==='undefined')return;
   const st=$('vsStatus');const info=$('vsLobbyInfo');const ready=$('vsReadyBtn');
   const mine=$('roomsMineBox');
+  const guests=Online.guestCount?Online.guestCount():0;
   const map={
     idle:'Create or browse rooms',
     hosting:'Creating room…',
     waiting:'Waiting for opponent in room list…',
     joining:'Joining room…',
-    connected:'Opponent linked — starting…',
+    connected:Online._matchStarted?'STARTING MATCH…':'Opponent linked — auto-start / FIGHT',
     disconnected:'Disconnected',
     error:'Connection error'
   };
   if(st) st.textContent=map[Online.status]||Online.status;
   if($('roomsCreateStatus')&&Online.role==='host'&&Online.roomCode){
-    $('roomsCreateStatus').textContent='Hosting '+Online.roomCode+' · '+(Online.guestCount()+1)+'/4';
+    $('roomsCreateStatus').textContent='Hosting · '+(guests+1)+'/2 pilots · first to 10k / 90s';
   }
   if(info){
     const lobby=Online.role==='host'?Online.lobbyList():(Online._remoteLobby||[]);
-    const names=lobby.length?lobby.map(p=>p.name).join(', '):(Online.opp.name||'waiting…');
-    const n=Online.role==='host'?(Online.guestCount()+1):(lobby.length||1);
-    info.innerHTML=`SQUAD <b style="color:var(--y)">${n}/4</b><br>PILOTS: <b style="color:var(--c)">${names}</b><br>${Online.role==='host'?(Online._matchStarted?'STARTING…':'Press FIGHT when ready (min 2)'):'In lobby — wait for host'}`;
+    const names=lobby.length?lobby.map(p=>p.name).join(', '):(Online.opp&&Online.opp.name)||'waiting…';
+    const n=Online.role==='host'?(guests+1):(lobby.length||1);
+    let tip='';
+    if(Online._matchStarted) tip='STARTING MATCH…';
+    else if(Online.role==='host') tip=guests>=1?'Tap FIGHT or wait auto-start (~1s)':'Waiting for 1 opponent…';
+    else tip='Joined — wait auto-start or tap READY';
+    info.innerHTML=`SQUAD <b style="color:var(--y)">${n}/2</b><br>PILOTS: <b style="color:var(--c)">${names}</b><br>${tip}`;
   }
   if(mine){
-    const show=Online.role==='host'&&(Online.status==='waiting'||Online.status==='connected'||Online.status==='hosting');
-    mine.style.display=show?'block':'none';
+    const hostLive=Online.role==='host'&&(Online.status==='waiting'||Online.status==='connected'||Online.status==='hosting');
+    const guestLive=Online.role==='guest'&&(Online.status==='connected'||Online.status==='joining');
+    mine.style.display=(hostLive||guestLive)?'block':'none';
+    const title=$('roomsMineTitle');
+    if(title) title.textContent=Online.role==='guest'?'JOINED · LOBBY':(Online._matchStarted?'MATCH STARTING…':'YOUR ROOM · LIVE');
   }
   if(ready){
-    ready.disabled=!(Online.status==='connected'||Online.status==='waiting');
-    if(Online.status==='connected') ready.disabled=false;
-    if(Online._matchStarted) ready.disabled=true;
+    // Host: only when a guest is linked. Guest: READY when connected.
+    if(Online._matchStarted){
+      ready.disabled=true;
+      ready.textContent='STARTING…';
+    } else if(Online.role==='guest'&&Online.status==='connected'){
+      ready.disabled=false;
+      ready.textContent='READY · FIGHT';
+    } else if(Online.role==='host'&&Online.status==='connected'&&guests>=1){
+      ready.disabled=false;
+      ready.textContent='FIGHT · START';
+    } else {
+      ready.disabled=true;
+      ready.textContent=Online.role==='host'?'FIGHT · need 1 opponent':'FIGHT · START';
+    }
   }
 }
 async function renderRoomsList(){
@@ -3262,9 +3281,11 @@ function wireUI(){
   wireVsNet=function(){
     Online.onConnect=()=>{
       updateVsStatus();
-      Toast.show('OPPONENT JOINED','ok');
+      Toast.show(Online.role==='host'?'OPPONENT JOINED · AUTO-START':'LINKED TO HOST','ok');
       renderRoomsList();
       Online.probeNetwork().then(()=>{Online.shareNetReport();refreshLobbyNetUI();}).catch(()=>{});
+      // Host backup: ensure match begins even if hello was missed
+      if(Online.role==='host'&&Online._scheduleAutoStart) Online._scheduleAutoStart(700);
     };
     Online.onLobby=()=>{updateVsStatus();refreshLobbyNetUI();};
     Online.onStart=(opts)=>launchVsMatch(opts||{});
@@ -3322,13 +3343,16 @@ function wireUI(){
         return;
       }
       const hostName=Meta.callsign||'PILOT';
+      const diff=($('vsDiff')&&$('vsDiff').value)||'hard';
+      Online._pendingDiff=diff;
       const code=await Online.hostRoom();
+      Online._pendingDiff=diff;
       await Online.publishRoom({
         code,
         peerId:Online.peerId,
         host:hostName,
         title:hostName+' VS',
-        diff:($('vsDiff')&&$('vsDiff').value)||'hard',
+        diff,
         players:1
       });
       Online.shareNetReport();
@@ -3372,9 +3396,23 @@ function wireUI(){
   if($('vsGoRooms'))$('vsGoRooms').onclick=()=>{showPage('pageVsRooms','home');startRoomsPoll();renderRoomsList();};
   if($('roomsRefresh'))$('roomsRefresh').onclick=()=>renderRoomsList();
   if($('vsReadyBtn'))$('vsReadyBtn').onclick=()=>{
-    Online.setReady($('vsDiff')?$('vsDiff').value:'hard');
+    const diff=$('vsDiff')?$('vsDiff').value:'hard';
+    const res=Online.setReady(diff);
     updateVsStatus();
-    Toast.show(Online.role==='host'?'STARTING…':'READY','ok');
+    if(res&&res.reason==='need_guest'){
+      Toast.show('NEED 1 OPPONENT','pink');
+      return;
+    }
+    if(Online.role==='host'){
+      Toast.show(res&&res.ok?'STARTING…':'START FAILED — retry','ok');
+      // Force retry if Peer link flaked
+      setTimeout(()=>{
+        if(!Online._matchStarted&&Online.guestCount()>=1) Online.beginMatch(diff);
+        updateVsStatus();
+      },900);
+    } else {
+      Toast.show('READY · waiting host auto-start','ok');
+    }
   };
   if($('vsCancelBtn'))$('vsCancelBtn').onclick=async()=>{
     await Online.unpublishRoom();

@@ -1314,11 +1314,34 @@
       }
     },
 
+    /** Schedule host auto-start once a guest seat is live (idempotent). */
+    _scheduleAutoStart(delayMs) {
+      if (this.role !== 'host' || this._matchStarted) return;
+      if (this.guestCount() < 1) return;
+      const wait = delayMs == null ? 600 : delayMs;
+      clearTimeout(this._autoStartT);
+      this._autoStartT = setTimeout(() => {
+        this._autoStartT = null;
+        if (this._matchStarted || this.role !== 'host') return;
+        if (this.guestCount() < 1) return;
+        const ok = this.beginMatch(this._pendingDiff);
+        if (!ok && typeof Toast !== 'undefined') {
+          Toast.show('START RETRY…', 'ok');
+          clearTimeout(this._autoStartT2);
+          this._autoStartT2 = setTimeout(() => {
+            if (!this._matchStarted && this.guestCount() >= 1) this.beginMatch(this._pendingDiff);
+          }, 700);
+        }
+      }, wait);
+    },
+
     wireHostConn(conn) {
       const slot = 'g' + this._slotSeq++;
       conn._muzzId = slot;
       const attach = () => {
         if (!this.conns.includes(conn)) this.conns.push(conn);
+        // Keep primary alias for first guest (send()/compat)
+        if (!this.conn || !this.conn.open) this.conn = conn;
         this.status = 'connected';
         this.sendTo(conn, {
           t: 'hello_ack',
@@ -1330,13 +1353,18 @@
         this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
         if (this.onConnect) this.onConnect();
         if (this.onLobby) this.onLobby();
+        // Backup auto-start: do not rely only on hello (can be lost on flaky links)
+        this._scheduleAutoStart(800);
       };
       conn.on('data', (msg) => this.handleMsg(msg, conn));
       conn.on('close', () => {
         this.conns = this.conns.filter((c) => c !== conn);
         this.lobbyGuests = this.lobbyGuests.filter((g) => g.id !== slot);
         delete this.guestInputs[slot];
-        this.setRoomStatus(this.roomCode, 'open', this.guestCount() + 1);
+        if (this.conn === conn) this.conn = (this.conns || []).find((c) => c && c.open) || null;
+        if (!this._matchStarted) {
+          this.setRoomStatus(this.roomCode, 'open', this.guestCount() + 1);
+        }
         this.broadcast({ t: 'lobby', lobby: this.lobbyList() });
         if (this.onLobby) this.onLobby();
         if (!this.guestCount() && !this._matchStarted) this.status = 'waiting';
@@ -1412,11 +1440,7 @@
             this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
             if (this.onLobby) this.onLobby();
             // Auto-start when 2 pilots connected (1v1 race)
-            if (this.guestCount() >= 1) {
-              setTimeout(() => {
-                if (!this._matchStarted) this.beginMatch(this._pendingDiff);
-              }, 900);
-            }
+            this._scheduleAutoStart(500);
           }
           break;
         case 'hello_ack':
@@ -1442,11 +1466,7 @@
           if (this.onLobby) this.onLobby();
           if (this.onLinkStats && this._linkStats) this.onLinkStats(this._linkStats);
           // Host: if guest is in and match not started, start (net is soft info)
-          if (this.role === 'host' && !this._matchStarted && this.guestCount() >= 1) {
-            setTimeout(() => {
-              if (!this._matchStarted) this.beginMatch(this._pendingDiff);
-            }, 500);
-          }
+          this._scheduleAutoStart(400);
           break;
         case 'net_ping':
           this.sendTo(conn || this.conn, { t: 'net_pong', id: msg.id, ts: Date.now() });
@@ -1481,10 +1501,8 @@
             this.lobbyGuests.forEach((g) => {
               if (g.id === id) g.ready = true;
             });
-            if (this.meReady || this.guestCount() >= 1) {
-              // host pressed ready earlier or guest ready with host wanting start
-            }
-            if (this.meReady) this.beginMatch(msg.diff || this._pendingDiff);
+            // 1v1: guest READY → start (host FIGHT also starts via setReady)
+            if (this.guestCount() >= 1) this._scheduleAutoStart(200);
           }
           if (this.onLobby) this.onLobby();
           break;
@@ -1556,11 +1574,15 @@
 
     setReady(diff) {
       this.meReady = true;
-      this._pendingDiff = diff || 'hard';
+      this._pendingDiff = diff || this._pendingDiff || 'hard';
       this.send({ t: 'ready', diff: this._pendingDiff, name: this.myName() });
-      if (this.role === 'host' && this.guestCount() >= 1) {
-        this.beginMatch(this._pendingDiff, true);
+      if (this.role === 'host') {
+        if (this.guestCount() < 1) return { ok: false, reason: 'need_guest' };
+        const started = this.beginMatch(this._pendingDiff, true);
+        return { ok: !!started, reason: started ? 'started' : 'busy' };
       }
+      // Guest ready — host may auto-start on ready msg; also nudge if host already meReady
+      return { ok: true, reason: 'ready_sent' };
     },
 
     sendInput(input) {
@@ -1622,6 +1644,10 @@
     destroyPeer(skipUnpublish) {
       this.stopRoomHeartbeat();
       this.stopLinkMonitor();
+      clearTimeout(this._autoStartT);
+      clearTimeout(this._autoStartT2);
+      this._autoStartT = null;
+      this._autoStartT2 = null;
       const code = this.roomCode || (this.publishedRoom && this.publishedRoom.code);
       if (!skipUnpublish && code && this.role === 'host' && !this._matchStarted) {
         this.unpublishRoom(code);
