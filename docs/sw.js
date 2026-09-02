@@ -1,5 +1,5 @@
 ﻿/* MUZZ GALAXY lightweight service worker â€” offline shell */
-const CACHE = 'muzz-galaxy-v9-rooms-fix';
+const CACHE = 'muzz-galaxy-v10-controls';
 const ASSETS = ['./', './index.html', './online.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './ios-install.html'];
 
 self.addEventListener('install', (e) => {

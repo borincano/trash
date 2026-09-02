@@ -31,23 +31,24 @@
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Rajdhani,system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 /* App-style chrome (fullscreen / PWA). Cannot replace real OS browser chrome without install. */
 #appChrome{
-  position:fixed;top:0;left:0;right:0;z-index:12000;height:calc(28px + var(--safe-t));
-  padding:var(--safe-t) 10px 0;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  position:fixed;top:0;left:0;right:0;z-index:45;height:calc(28px + var(--safe-t));
+  padding:var(--safe-t) 10px 0;display:none;align-items:center;justify-content:space-between;gap:8px;
   background:linear-gradient(180deg,rgba(6,10,24,.94),rgba(6,10,24,.72));border-bottom:1px solid rgba(0,232,255,.22);
-  backdrop-filter:blur(10px);opacity:0;pointer-events:none;transition:opacity .2s;
+  backdrop-filter:blur(10px);pointer-events:none;
 }
-body.app-fs #appChrome,body.standalone #appChrome{opacity:1;pointer-events:auto}
-body.app-fs,body.standalone{--safe-t-extra:28px}
-#appChrome .ac-title{font-family:Orbitron,sans-serif;font-size:.55rem;letter-spacing:.16em;color:var(--c);opacity:.9}
-#appChrome .ac-btns{display:flex;gap:6px;margin-left:auto}
+/* Only show chrome in true fullscreen / installed PWA — never block game touches */
+body.app-fs #appChrome,body.standalone #appChrome{display:flex;pointer-events:none}
+body.app-fs #appChrome .ac-btn,body.standalone #appChrome .ac-btn{pointer-events:auto}
+#appChrome .ac-title{font-family:Orbitron,sans-serif;font-size:.55rem;letter-spacing:.16em;color:var(--c);opacity:.9;pointer-events:none}
+#appChrome .ac-btns{display:flex;gap:6px;margin-left:auto;pointer-events:none}
 #appChrome .ac-btn{
   width:28px;height:20px;border-radius:5px;border:1px solid rgba(0,232,255,.28);background:rgba(0,232,255,.08);
   color:var(--c);font-size:.7rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-  font-family:Orbitron,sans-serif;padding:0;
+  font-family:Orbitron,sans-serif;padding:0;pointer-events:auto;
 }
 #appChrome .ac-btn:hover{background:rgba(0,232,255,.18)}
 #appChrome .ac-btn.close{border-color:rgba(255,45,155,.4);color:var(--m)}
-canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #bgCanvas{z-index:0}#gameCanvas{z-index:1}#fxCanvas{z-index:2;pointer-events:none;mix-blend-mode:screen}
 #dangerVig{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(255,20,50,.4) 100%);transition:opacity .25s}
 
@@ -222,7 +223,15 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 /* ═══ IN-GAME HUD ═══ */
 #hudLayer{position:fixed;inset:0;z-index:40;display:none;pointer-events:none}
 #hudLayer.on{display:block}
-#hudLayer *{pointer-events:auto}
+/* Only interactive HUD controls receive pointers — never blanket * { pointer-events:auto } */
+#hudLayer #pauseBtn,
+#hudLayer #controls,
+#hudLayer #controls .cz,
+#hudLayer #controls .ctl,
+#hudLayer #leftBtn,
+#hudLayer #rightBtn,
+#hudLayer #shootBtn,
+#hudLayer #specialBtn{pointer-events:auto !important;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 #hud{position:absolute;top:var(--safe-t);left:0;right:0;display:flex;justify-content:space-between;pointer-events:none}
 .hb{background:rgba(8,12,28,.82);backdrop-filter:blur(8px);border-bottom:2px solid rgba(0,232,255,.45);padding:.35rem .65rem;min-width:60px;text-align:center}
 .hb:first-child{clip-path:polygon(0 0,100% 0,calc(100% - 8px) 100%,0 100%)}
@@ -595,8 +604,14 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div id="combo"><span id="comboVal">2x</span><span class="cm">COMBO</span></div>
   <div id="waveAnnounce"><div class="wa-num" id="waNum">WAVE 1</div><div class="wa-sub" id="waSub">ENGAGE</div></div>
   <div id="controls">
-    <div class="cz"><div class="ctl" id="leftBtn">◀</div><div class="ctl" id="rightBtn">▶</div></div>
-    <div class="cz"><button class="ctl" id="specialBtn" type="button">✦</button><div class="ctl" id="shootBtn">⚡</div></div>
+    <div class="cz">
+      <button class="ctl" id="leftBtn" type="button" aria-label="Move left">◀</button>
+      <button class="ctl" id="rightBtn" type="button" aria-label="Move right">▶</button>
+    </div>
+    <div class="cz">
+      <button class="ctl" id="specialBtn" type="button" aria-label="Nova">✦</button>
+      <button class="ctl" id="shootBtn" type="button" aria-label="Fire">⚡</button>
+    </div>
   </div>
 </div>
 
@@ -1436,25 +1451,59 @@ const MISSIONS_RUN=[
 
 const Input={left:false,right:false,shoot:false,special:false,keys:{},
   init(){
-    const hold=(el,key)=>{const d=e=>{e.preventDefault();Input[key]=true;el.classList.add('held');};const u=e=>{e.preventDefault();Input[key]=false;el.classList.remove('held');};
-      el.addEventListener('touchstart',d,{passive:false});el.addEventListener('touchend',u,{passive:false});el.addEventListener('touchcancel',u,{passive:false});
-      el.addEventListener('mousedown',d);el.addEventListener('mouseup',u);el.addEventListener('mouseleave',u);};
-    hold($('leftBtn'),'left');hold($('rightBtn'),'right');hold($('shootBtn'),'shoot');hold($('specialBtn'),'special');
-    document.addEventListener('keydown',e=>{
-      if(this.keys[e.code])return;this.keys[e.code]=true;
+    const hold=(el,key)=>{
+      if(!el) return;
+      const down=(e)=>{
+        try{e.preventDefault();e.stopPropagation();}catch(_){}
+        Input[key]=true;
+        el.classList.add('held');
+      };
+      const up=(e)=>{
+        try{e.preventDefault();e.stopPropagation();}catch(_){}
+        Input[key]=false;
+        el.classList.remove('held');
+      };
+      el.addEventListener('pointerdown',down,{passive:false});
+      el.addEventListener('pointerup',up,{passive:false});
+      el.addEventListener('pointercancel',up,{passive:false});
+      el.addEventListener('pointerleave',up,{passive:false});
+      el.addEventListener('touchstart',down,{passive:false});
+      el.addEventListener('touchend',up,{passive:false});
+      el.addEventListener('touchcancel',up,{passive:false});
+      el.addEventListener('mousedown',down);
+      el.addEventListener('mouseup',up);
+      el.addEventListener('mouseleave',up);
+      // Keep focus from stealing keyboard on mobile WebView
+      el.setAttribute('tabindex','-1');
+    };
+    hold($('leftBtn'),'left');
+    hold($('rightBtn'),'right');
+    hold($('shootBtn'),'shoot');
+    hold($('specialBtn'),'special');
+    const onKeyDown=(e)=>{
+      if(e.repeat) return;
+      if(this.keys[e.code])return;
+      this.keys[e.code]=true;
       if(e.code==='ArrowLeft'||e.code==='KeyA')this.left=true;
       if(e.code==='ArrowRight'||e.code==='KeyD')this.right=true;
-      if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();this.shoot=true;}
-      if(e.code==='KeyF'||e.code==='ShiftLeft')this.special=true;
-      if(e.code==='Escape'||e.code==='KeyP')Game.togglePause();
-    });
-    document.addEventListener('keyup',e=>{
+      if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW'){e.preventDefault();this.shoot=true;}
+      if(e.code==='KeyF'||e.code==='ShiftLeft'||e.code==='ShiftRight')this.special=true;
+      if(e.code==='Escape'||e.code==='KeyP'){ if(typeof Game!=='undefined') Game.togglePause(); }
+    };
+    const onKeyUp=(e)=>{
       this.keys[e.code]=false;
       if(e.code==='ArrowLeft'||e.code==='KeyA')this.left=false;
       if(e.code==='ArrowRight'||e.code==='KeyD')this.right=false;
-      if(e.code==='Space'||e.code==='ArrowUp')this.shoot=false;
-      if(e.code==='KeyF'||e.code==='ShiftLeft')this.special=false;
-    });
+      if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW')this.shoot=false;
+      if(e.code==='KeyF'||e.code==='ShiftLeft'||e.code==='ShiftRight')this.special=false;
+    };
+    // Capture on window so controls work even if focus is odd after menus/fullscreen
+    window.addEventListener('keydown',onKeyDown,{capture:true});
+    window.addEventListener('keyup',onKeyUp,{capture:true});
+  },
+  reset(){
+    this.left=false;this.right=false;this.shoot=false;this.special=false;this.keys={};
+    ['leftBtn','rightBtn','shootBtn','specialBtn'].forEach(id=>{const el=$(id);if(el)el.classList.remove('held');});
   }
 };
 
@@ -2419,6 +2468,8 @@ const Game={
     $('upgradeScreen').classList.add('on');
   },
   beginAssault(){
+    Engine.paused=false;
+    if(typeof Input!=='undefined'&&Input.reset) Input.reset();
     // VS race: 90s + first to 10k; solo modes keep classic wave goals
     if(GS.mode==='vs'){
       GS.waveTime=GS.vsMatchTime||VS_MATCH_DURATION;
@@ -2624,10 +2675,15 @@ const Game={
     if(GS.mode!=='vs') GS.waveGoal=waveGoalFor(1);
     UI.score();UI.wave();UI.lives();UI.pwr();UI.boss(false);UI.combo();UI.mission();UI.obj();
     hideAllMenus();UI.gameUI(true);$('dangerVig').style.opacity=0;
+    if(typeof Input!=='undefined'&&Input.reset) Input.reset();
     AudioSys.startMusic();Engine.start();
+    Engine.paused=false;
     if(!Meta.tutDone&&GS.mode!=='vs')setTimeout(()=>Tutorial.start(),300);
-    else if(typeof Engine!=='undefined') Engine.paused=false;
-    UI.announceWave(1,GS.mode==='vs',()=>this.beginAssault());
+    UI.announceWave(1,GS.mode==='vs',()=>{
+      Engine.paused=false;
+      if(typeof Input!=='undefined'&&Input.reset) Input.reset();
+      this.beginAssault();
+    });
   },
   end(victory, extra){
     Engine.stop();Engine.running=false;GS.waveState='idle';GS.assaultActive=false;
@@ -3286,7 +3342,7 @@ function wireUI(){
 
   $('btnEnter').onclick=()=>{
     unlock();
-    AppShell.enter();
+    // Do NOT auto-fullscreen — breaks touch/keyboard on many mobile WebViews & desktop focus
     if(Meta.accessOk){showHome();}
     else{$('gateScreen').classList.add('on');}
   };
@@ -3301,7 +3357,6 @@ function wireUI(){
       Meta.accessOk=true;Meta.accessVer=ACCESS_VER;Meta.save();
       $('gateScreen').classList.remove('on');
       $('titleScreen').classList.remove('on');
-      AppShell.enter();
       showHome();
     } else {
       $('pwErr').classList.add('on');setTimeout(()=>$('pwErr').classList.remove('on'),700);
