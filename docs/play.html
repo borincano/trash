@@ -404,8 +404,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
       <div class="mode-card" id="modeVs">
         <div class="mc-badge">ONLINE</div>
         <div class="mc-ico">⚔</div>
-        <div class="mc-t">SUPER SURVIVAL</div>
-        <div class="mc-d">Create room · up to 4 pilots</div>
+        <div class="mc-t">VS ROOMS</div>
+        <div class="mc-d">Create / join · wait for rival · APK + Web</div>
       </div>
       <div class="mode-card" id="modeRank">
         <div class="mc-ico">🌐</div>
@@ -517,7 +517,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <div class="page-head"><button class="back-btn" data-back data-vs-rooms-back>‹</button><h2>⚔ VS ROOMS</h2></div>
   <div class="page-body">
     <div style="padding:12px;margin-bottom:14px;border:1px solid rgba(0,232,255,.4);border-radius:12px;background:linear-gradient(160deg,rgba(0,232,255,.12),rgba(255,45,155,.08))">
-      <div class="section-h" style="margin:0 0 8px"><h3>HOST A SQUAD</h3><span id="vsName">PILOT</span></div>
+      <div class="section-h" style="margin:0 0 8px"><h3>CREATE ROOM</h3><span id="vsName">PILOT</span></div>
+      <p style="font-size:.8rem;color:var(--muted);margin:0 0 10px;line-height:1.4">Cross-play: Android APK · iPhone/Web · PC. Same cloud rooms.</p>
       <div class="set-row" style="margin-bottom:10px"><span>DIFFICULTY</span>
         <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
       </div>
@@ -527,18 +528,19 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
       <button class="btn outline" id="netProbeBtn" type="button" style="width:100%;margin-top:8px">CHECK ONLINE</button>
     </div>
 
-    <div id="roomsMineBox" style="display:none;margin-bottom:14px;padding:12px;border:1px solid rgba(255,208,0,.4);border-radius:12px;background:rgba(255,208,0,.08)">
-      <div id="roomsMineTitle" style="font-family:Orbitron,sans-serif;font-size:.7rem;color:var(--y);letter-spacing:.1em;margin-bottom:6px">LOBBY · LIVE</div>
-      <div id="vsLobbyInfo" style="font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,232,255,.75);line-height:1.55;margin-bottom:10px"></div>
-      <div class="chip" id="vsLobbyNet" style="margin-bottom:8px">Waiting for opponent net…</div>
+    <div id="roomsMineBox" style="display:none;margin-bottom:14px;padding:14px;border:2px solid rgba(255,208,0,.55);border-radius:14px;background:rgba(255,208,0,.1)">
+      <div id="roomsMineTitle" style="font-family:Orbitron,sans-serif;font-size:.72rem;color:var(--y);letter-spacing:.12em;margin-bottom:8px">YOUR ROOM · LIVE</div>
+      <div id="vsWaitingBanner" style="display:none;text-align:center;padding:12px 10px;margin-bottom:10px;border-radius:10px;border:1px solid rgba(0,232,255,.45);background:rgba(0,232,255,.1);font-family:Orbitron,sans-serif;font-size:.85rem;letter-spacing:.14em;color:var(--c)">WAITING FOR RIVAL…</div>
+      <div id="vsLobbyInfo" style="font-family:'Share Tech Mono',monospace;font-size:.78rem;color:rgba(0,232,255,.85);line-height:1.55;margin-bottom:10px"></div>
+      <div class="chip" id="vsLobbyNet" style="margin-bottom:8px">Link status…</div>
       <button class="btn gold" id="vsReadyBtn" type="button" style="width:100%;margin-bottom:8px" disabled>FIGHT · START</button>
       <button class="btn grey" id="vsCancelBtn" type="button" style="width:100%">CLOSE ROOM</button>
     </div>
 
     <div class="section-h"><h3>AVAILABLE ROOMS</h3><button class="btn sm cyan" id="roomsRefresh" type="button">REFRESH</button></div>
-    <div class="chip" id="roomsStatus" style="margin-bottom:10px">Loading…</div>
+    <div class="chip" id="roomsStatus" style="margin-bottom:10px">Loading rooms…</div>
     <div id="roomsList"></div>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Tap room to join · Max <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">2</b> pilots race · idle close <b style="color:var(--m)">1 min</b></p>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Tap <b style="color:var(--c)">JOIN</b> to enter · Max <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">2</b> pilots · idle close <b style="color:var(--m)">1 min</b></p>
   </div>
 </div>
 
@@ -3022,39 +3024,50 @@ function updateVsStatus(){
   if(typeof Online==='undefined')return;
   const st=$('vsStatus');const info=$('vsLobbyInfo');const ready=$('vsReadyBtn');
   const mine=$('roomsMineBox');
+  const waitBan=$('vsWaitingBanner');
   const guests=Online.guestCount?Online.guestCount():0;
   const map={
     idle:'Create or browse rooms',
     hosting:'Creating room…',
-    waiting:'Waiting for opponent in room list…',
+    waiting:'WAITING FOR RIVAL…',
     joining:'Joining room…',
-    connected:Online._matchStarted?'STARTING MATCH…':'Opponent linked — auto-start / FIGHT',
+    connected:Online._matchStarted?'STARTING MATCH…':'RIVAL LINKED · FIGHT READY',
     disconnected:'Disconnected',
     error:'Connection error'
   };
   if(st) st.textContent=map[Online.status]||Online.status;
   if($('roomsCreateStatus')&&Online.role==='host'&&Online.roomCode){
-    $('roomsCreateStatus').textContent='Hosting · '+(guests+1)+'/2 pilots · first to 10k / 90s';
+    $('roomsCreateStatus').textContent=guests>=1
+      ?('Rival found · '+(guests+1)+'/2 · first to 10k / 90s')
+      :('Room live · WAITING FOR RIVAL · '+(guests+1)+'/2');
   }
   if(info){
     const lobby=Online.role==='host'?Online.lobbyList():(Online._remoteLobby||[]);
-    const names=lobby.length?lobby.map(p=>p.name).join(', '):(Online.opp&&Online.opp.name)||'waiting…';
+    const names=lobby.length?lobby.map(p=>p.name).join(', '):(Online.opp&&Online.opp.name)||'—';
     const n=Online.role==='host'?(guests+1):(lobby.length||1);
     let tip='';
     if(Online._matchStarted) tip='STARTING MATCH…';
-    else if(Online.role==='host') tip=guests>=1?'Tap FIGHT or wait auto-start (~1s)':'Waiting for 1 opponent…';
-    else tip='Joined — wait auto-start or tap READY';
-    info.innerHTML=`SQUAD <b style="color:var(--y)">${n}/2</b><br>PILOTS: <b style="color:var(--c)">${names}</b><br>${tip}`;
+    else if(Online.role==='host') tip=guests>=1?'Rival connected — tap FIGHT or auto-start':'WAITING FOR RIVAL…';
+    else tip='Joined lobby — WAITING FOR RIVAL / host start';
+    info.innerHTML=`PLAYERS <b style="color:var(--y)">${n}/2</b><br>PILOTS: <b style="color:var(--c)">${names}</b><br>${tip}`;
   }
   if(mine){
     const hostLive=Online.role==='host'&&(Online.status==='waiting'||Online.status==='connected'||Online.status==='hosting');
     const guestLive=Online.role==='guest'&&(Online.status==='connected'||Online.status==='joining');
     mine.style.display=(hostLive||guestLive)?'block':'none';
     const title=$('roomsMineTitle');
-    if(title) title.textContent=Online.role==='guest'?'JOINED · LOBBY':(Online._matchStarted?'MATCH STARTING…':'YOUR ROOM · LIVE');
+    if(title){
+      if(Online._matchStarted) title.textContent='MATCH STARTING…';
+      else if(Online.role==='guest') title.textContent='JOINED · LOBBY';
+      else title.textContent='YOUR ROOM · LIVE';
+    }
+    if(waitBan){
+      const showWait=!Online._matchStarted&&((Online.role==='host'&&guests<1)||(Online.role==='guest'&&Online.status==='connected'));
+      waitBan.style.display=showWait?'block':'none';
+      waitBan.textContent=Online.role==='guest'?'WAITING FOR RIVAL…':'WAITING FOR RIVAL…';
+    }
   }
   if(ready){
-    // Host: only when a guest is linked. Guest: READY when connected.
     if(Online._matchStarted){
       ready.disabled=true;
       ready.textContent='STARTING…';
@@ -3066,7 +3079,7 @@ function updateVsStatus(){
       ready.textContent='FIGHT · START';
     } else {
       ready.disabled=true;
-      ready.textContent=Online.role==='host'?'FIGHT · need 1 opponent':'FIGHT · START';
+      ready.textContent=Online.role==='host'?'WAITING FOR RIVAL':'FIGHT · START';
     }
   }
 }
@@ -3085,7 +3098,7 @@ async function renderRoomsList(){
     if(!n){
       const empty=document.createElement('div');
       empty.style.cssText='padding:18px;text-align:center;color:var(--muted);font-size:.85rem;line-height:1.5';
-      empty.textContent='No open squads right now.\nTap CREATE ROOM above.';
+      empty.textContent='No rooms available.\nTap CREATE ROOM above, then wait for a rival.';
       list.appendChild(empty);
       return;
     }
@@ -3093,16 +3106,21 @@ async function renderRoomsList(){
       const row=document.createElement('div');
       row.className='list-row';
       row.style.cursor='pointer';
-      row.style.marginBottom='8px';
+      row.style.marginBottom='10px';
+      row.style.padding='12px';
+      row.style.border='1px solid rgba(0,232,255,.28)';
+      row.style.borderRadius='12px';
       const mine=Online.roomCode&&Online.roomCode===r.code;
-      const maxP=r.maxPlayers||Online.MAX_PLAYERS||4;
+      const maxP=r.maxPlayers||Online.MAX_PLAYERS||2;
       const full=(r.players|0)>=maxP||r.status==='full';
-      const title=(r.title||(r.host+' SQUAD')).slice(0,22);
-      row.innerHTML=`<div class="lr-l"><div class="lr-t">${mine?'★ ':''}${title}</div><div class="lr-s">Host ${r.host} · ${(r.diff||'hard').toUpperCase()} · ${r.players||1}/${maxP}</div></div><div class="lr-r" style="color:${full?'var(--muted)':mine?'var(--y)':'var(--c)'}">${mine?'YOURS':full?'FULL':'JOIN'}</div>`;
+      const title=(r.title||(r.host+' VS')).slice(0,22);
+      const action=mine?'YOURS':(full?'FULL':'JOIN');
+      const actionCol=full?'var(--muted)':mine?'var(--y)':'var(--c)';
+      row.innerHTML=`<div class="lr-l"><div class="lr-t">${mine?'★ ':''}${title}</div><div class="lr-s">Host ${r.host} · ${(r.diff||'hard').toUpperCase()} · ${r.players||1}/${maxP} · open</div></div><div class="lr-r" style="color:${actionCol};font-family:Orbitron,sans-serif;letter-spacing:.08em">${action}</div>`;
       if(!full&&!mine){
         row.onclick=()=>joinListedRoom(r);
       } else if(mine){
-        row.style.borderColor='rgba(0,232,255,.5)';
+        row.style.borderColor='rgba(255,208,0,.55)';
       }
       list.appendChild(row);
     });
@@ -3130,13 +3148,15 @@ async function joinListedRoom(room){
     }
     await Online.joinRoom(fresh);
     if(fresh.diff&&$('vsDiff'))$('vsDiff').value=fresh.diff;
-    Toast.show('JOINED · ONLINE','ok');
-    if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · joined multi';
+    Toast.show('JOINED · WAITING FOR RIVAL','ok');
+    if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · joined room';
+    if($('roomsMineBox'))$('roomsMineBox').style.display='block';
     Online.shareNetReport();
     Online.startLinkMonitor && Online.startLinkMonitor();
     updateVsStatus();
     refreshLobbyNetUI();
     renderRoomsList();
+    showPage('pageVsRooms','home');
   }catch(e){
     console.error(e);
     Toast.show('JOIN FAILED','pink');
@@ -3314,7 +3334,7 @@ function wireUI(){
     // Detect online as soon as multi hub opens
     Online.probeNetwork().then(n=>{
       if($('netProbeStatus'))$('netProbeStatus').textContent=n.label+(n.ok?' ✓':'');
-      if($('roomsCreateStatus')&&n.ok)$('roomsCreateStatus').textContent='ONLINE · listo para multi 1v1 · first to 10k / 90s';
+      if($('roomsCreateStatus')&&n.ok)$('roomsCreateStatus').textContent='ONLINE · ready for cross-play 1v1 · first to 10k / 90s';
       refreshLobbyNetUI();
     }).catch(()=>{
       if($('netProbeStatus'))$('netProbeStatus').textContent='OFFLINE · check Wi‑Fi/datos';
@@ -3414,12 +3434,12 @@ function wireUI(){
         refreshLobbyNetUI();
         if(!net.ok && !Online.isBrowserOnline()){
           Toast.show('NO INTERNET','pink');
-          if(st) st.textContent='Sin internet — activa Wi‑Fi/datos e intenta de nuevo';
+          if(st) st.textContent='No internet — enable Wi‑Fi/data and retry';
           return;
         }
-        if(!net.ok) Toast.show('Red inestable — se intenta igual','ok');
+        if(!net.ok) Toast.show('Unstable network — trying anyway','ok');
       }catch(e){ /* continue */ }
-      if(st) st.textContent='Creating VS room…';
+      if(st) st.textContent='Creating room…';
       const open=await Online.listRooms();
       if(open.length>=(Online.MAX_ROOMS||10)){
         Toast.show('ROOMS FULL (10)','pink');
@@ -3432,7 +3452,7 @@ function wireUI(){
       Online._pendingDiff=diff;
       const code=await Online.hostRoom();
       Online._pendingDiff=diff;
-      await Online.publishRoom({
+      const published=await Online.publishRoom({
         code,
         peerId:Online.peerId,
         host:hostName,
@@ -3441,15 +3461,23 @@ function wireUI(){
         players:1
       });
       Online.shareNetReport();
-      if($('roomsMineBox'))$('roomsMineBox').style.display='block';
-      Toast.show('ROOM LIVE · waiting 1v1','ok');
-      if(st) st.textContent='ONLINE · room live · wait 1 opponent (1/2)';
-      if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · hosting multi';
+      if($('roomsMineBox')){
+        $('roomsMineBox').style.display='block';
+        try{$('roomsMineBox').scrollIntoView({behavior:'smooth',block:'nearest'});}catch(_){}
+      }
+      Toast.show('ROOM LIVE · WAITING FOR RIVAL','ok');
+      if(st) st.textContent='Room created · WAITING FOR RIVAL (1/2)';
+      if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · hosting · cross-play on';
       updateVsStatus();
       refreshLobbyNetUI();
       showPage('pageVsRooms','home');
       startRoomsPoll();
-      renderRoomsList();
+      await renderRoomsList();
+      // Confirm room appears in AVAILABLE ROOMS
+      const listed=await Online.listRooms();
+      const okList=listed.some(r=>r.code===(published&&published.code||code));
+      if(!okList&&st) st.textContent='Room hosted · list syncing… pull REFRESH';
+      updateVsStatus();
     }catch(e){
       console.error(e);
       Toast.show(String(e.message||'HOST FAILED').slice(0,40),'pink');

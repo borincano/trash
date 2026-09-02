@@ -287,9 +287,10 @@
         title: { stringValue: String(room.title || room.host || 'SQUAD').slice(0, 24) },
         diff: { stringValue: String(room.diff || 'hard') },
         status: { stringValue: String(room.status || 'open') },
-        players: { integerValue: String(room.players | 0) },
-        maxPlayers: { integerValue: String(room.maxPlayers || MAX_ROOM_PLAYERS) },
-        ts: { integerValue: String(room.ts | 0) },
+        players: { integerValue: String(Math.max(0, Number(room.players) || 0) | 0) },
+        maxPlayers: { integerValue: String(Math.max(1, Number(room.maxPlayers) || MAX_ROOM_PLAYERS) | 0) },
+        // NEVER use `ts | 0` — bitwise OR truncates to Int32 and corrupts Date.now()
+        ts: { integerValue: String(Math.floor(Number(room.ts) || Date.now())) },
       },
     };
   }
@@ -870,9 +871,10 @@
       }
       const rooms = docs.map(roomFromDoc).filter(Boolean);
       const live = [];
+      const seen = {};
       for (const r of rooms) {
-        const ts = r.ts > 1e12 ? r.ts : 0;
-        const age = ts ? now - ts : ROOM_TTL_MS + 1;
+        const ts = Number(r.ts) || 0;
+        const age = ts > 1e12 ? now - ts : ROOM_TTL_MS + 1;
         // Playing, empty, or no host heartbeat for 1 min → delete
         if (r.status === 'playing' || (r.players | 0) <= 0 || age > ROOM_TTL_MS) {
           firestoreDeleteRoom(r.code).catch(() => {});
@@ -881,9 +883,16 @@
         if (r.status === 'open' || r.status === 'full' || !r.status) {
           r.players = Math.min(MAX_ROOM_PLAYERS, Math.max(1, (r.players | 0) || 1));
           r.maxPlayers = r.maxPlayers || MAX_ROOM_PLAYERS;
-          r.title = r.title || r.host + ' SQUAD';
+          r.title = r.title || r.host + ' VS';
           live.push(r);
+          seen[r.code] = true;
         }
+      }
+      // Keep own published room visible even if cloud list lags
+      if (this.publishedRoom && this.publishedRoom.code && !seen[this.publishedRoom.code]) {
+        const pr = Object.assign({}, this.publishedRoom);
+        pr.ts = pr.ts || now;
+        live.unshift(pr);
       }
       live.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       return live.slice(0, MAX_GLOBAL_ROOMS);
