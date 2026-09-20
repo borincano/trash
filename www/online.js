@@ -2,7 +2,7 @@
  * MUZZ GALAXY — Online layer
  * - GLOBAL leaderboard via Firebase Firestore (project galaxymuzz)
  *   Collection ONLY: muzzgalaxy_scores  (never touches social / private / chat)
- * - 1v1 VS via PeerJS (WebRTC)
+ * - VS (2–4 pilots) via PeerJS (WebRTC) host-relay
  */
 (function (global) {
   'use strict';
@@ -17,8 +17,8 @@
   const FIRESTORE_ROOMS = 'muzzgalaxy_rooms';
   const FIRESTORE_PROFILES = 'muzzgalaxy_profiles';
   const MAX_GLOBAL_ROOMS = 10;
-  // Competitive VS race: 2 pilots same arena (host + 1 guest). Room list still works for all.
-  const MAX_ROOM_PLAYERS = 2;
+  // Competitive VS race: up to 4 pilots same arena (host + up to 3 guests). Room list still works for all.
+  const MAX_ROOM_PLAYERS = 4;
   // Room vanishes if no host heartbeat for this long (host offline / empty)
   const ROOM_TTL_MS = 60 * 1000;
   // Network gate — soft metrics (never hard-block multi if cloud is reachable)
@@ -734,13 +734,14 @@
     async probeNetwork() {
       const samples = [];
       let cloudOk = false;
+      let roomsPayloadOk = false;
       const url =
         'https://firestore.googleapis.com/v1/projects/' +
         FIRESTORE_PROJECT +
         '/databases/(default)/documents/' +
         FIRESTORE_ROOMS +
         '?pageSize=1';
-      // Quick online check: 2 RTT samples to game cloud (rooms API)
+      // Rooms GET success (including empty {}) means cloud is up — never treat as offline
       for (let i = 0; i < 2; i++) {
         const t0 = performance.now();
         try {
@@ -750,11 +751,23 @@
             headers: { Accept: 'application/json' },
           });
           samples.push(performance.now() - t0);
-          if (res.ok || res.status === 200 || res.status === 404) cloudOk = true;
+          if (res.ok || res.status === 200 || res.status === 404) {
+            cloudOk = true;
+            try {
+              const j = await res.clone().json();
+              // empty list / missing documents still counts as cloud OK
+              if (j && (j.documents || j === Object(j))) roomsPayloadOk = true;
+              roomsPayloadOk = true;
+            } catch (_) {
+              roomsPayloadOk = true; // 404 / empty still fine
+            }
+          }
         } catch (e) {
           samples.push(999);
         }
       }
+      if (roomsPayloadOk) cloudOk = true;
+
       let bitrateKbps = 0;
       try {
         const t2 = performance.now();
@@ -764,30 +777,35 @@
         const sec = Math.max(0.001, (t3 - t2) / 1000);
         bitrateKbps = Math.round((bytes * 8) / 1000 / sec);
         if (bitrateKbps > 8000) bitrateKbps = 2000;
-        // Small JSON responses look “slow bitrate” — if cloud answered, treat as online
+        // Tiny JSON responses must NOT mark offline — bump advisory bitrate
         if (cloudOk && bitrateKbps < 100) bitrateKbps = 250;
       } catch (e) {
         bitrateKbps = cloudOk ? 200 : 0;
       }
+
       const rtt = Math.round(samples.reduce((a, b) => a + b, 0) / Math.max(1, samples.length));
       const jitter = Math.round(
         Math.sqrt(samples.reduce((a, s) => a + Math.pow(s - rtt, 2), 0) / Math.max(1, samples.length))
       );
-      // ONLINE if browser online + cloud reachable (bitrate is advisory only)
       const browserOn = this.isBrowserOnline();
+
+      // If iOS/Safari fetch throws but browser thinks we're online, still allow multiplayer
       let quality = 'offline';
-      if (cloudOk || (browserOn && rtt < 900)) {
+      if (cloudOk) {
         if (rtt <= 140 && bitrateKbps >= 400) quality = 'excellent';
         else if (rtt <= NET_MAX_RTT_MS && bitrateKbps >= NET_MIN_BITRATE_KBPS) quality = 'good';
-        else if (cloudOk) quality = 'ok';
-        else quality = 'weak';
+        else quality = 'ok'; // cloud answered — never offline solely on bitrate
+      } else if (browserOn) {
+        // Fetch failed (common on flaky mobile) but navigator.onLine !== false → allow MP
+        quality = 'ok';
       }
-      const ok = quality !== 'offline'; // multiplayer allowed whenever cloud/browser is up
+
+      const ok = quality !== 'offline';
       this.online = ok;
       this.netReport = {
         ok,
         online: ok,
-        cloudOk,
+        cloudOk: !!(cloudOk || roomsPayloadOk),
         quality,
         rtt: rtt > 900 ? 0 : rtt,
         jitter,
@@ -797,6 +815,8 @@
           ? 'ONLINE · ' + quality.toUpperCase() + ' · ' + (rtt > 900 ? '—' : rtt + 'ms') + ' · ~' + bitrateKbps + ' kb/s'
           : 'OFFLINE · no cloud',
       };
+      // Compat aliases used by older UI
+      this.netReport.label = this.netReport.label;
       return this.netReport;
     },
 
@@ -1324,15 +1344,20 @@
     },
 
     /** Schedule host auto-start once a guest seat is live (idempotent). */
-    _scheduleAutoStart(delayMs) {
+    _scheduleAutoStart(delayMs, opts) {
       if (this.role !== 'host' || this._matchStarted) return;
       if (this.guestCount() < 1) return;
+      const requireFull = opts && opts.requireFull;
+      const total = this.guestCount() + 1;
+      // Filling 3–4 seats: only auto-start when full (host FIGHT starts early anytime)
+      if (requireFull && total < MAX_ROOM_PLAYERS) return;
       const wait = delayMs == null ? 600 : delayMs;
       clearTimeout(this._autoStartT);
       this._autoStartT = setTimeout(() => {
         this._autoStartT = null;
         if (this._matchStarted || this.role !== 'host') return;
         if (this.guestCount() < 1) return;
+        if (requireFull && this.guestCount() + 1 < MAX_ROOM_PLAYERS) return;
         const ok = this.beginMatch(this._pendingDiff);
         if (!ok && typeof Toast !== 'undefined') {
           Toast.show('START RETRY…', 'ok');
@@ -1362,8 +1387,8 @@
         this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
         if (this.onConnect) this.onConnect();
         if (this.onLobby) this.onLobby();
-        // Backup auto-start: do not rely only on hello (can be lost on flaky links)
-        this._scheduleAutoStart(800);
+        // Auto-start only when lobby is full (host FIGHT starts early for 2–3P)
+        if (this.guestCount() + 1 >= MAX_ROOM_PLAYERS) this._scheduleAutoStart(600, { requireFull: true });
       };
       conn.on('data', (msg) => this.handleMsg(msg, conn));
       conn.on('close', () => {
@@ -1408,7 +1433,7 @@
       if (this.conn && this.conn.open && !(this.conns || []).includes(this.conn)) this.sendTo(this.conn, obj);
     },
 
-    /** Host starts 1v1 race when guest connected (net report is advisory only) */
+    /** Host starts VS race when >=1 guest connected (net report is advisory only) */
     beginMatch(diff, force) {
       if (this._matchStarted) return false;
       if (this.role !== 'host') return false;
@@ -1448,8 +1473,8 @@
             this.broadcast({ t: 'lobby', lobby: this.lobbyList() });
             this.setRoomStatus(this.roomCode, this.guestCount() + 1 >= MAX_ROOM_PLAYERS ? 'full' : 'open', this.guestCount() + 1);
             if (this.onLobby) this.onLobby();
-            // Auto-start when 2 pilots connected (1v1 race)
-            this._scheduleAutoStart(500);
+            // Auto-start when lobby full (4); host FIGHT / guest READY handle 2–3P
+            if (this.guestCount() + 1 >= MAX_ROOM_PLAYERS) this._scheduleAutoStart(400, { requireFull: true });
           }
           break;
         case 'hello_ack':
@@ -1474,8 +1499,8 @@
           this.peerNetReport = msg.report || null;
           if (this.onLobby) this.onLobby();
           if (this.onLinkStats && this._linkStats) this.onLinkStats(this._linkStats);
-          // Host: if guest is in and match not started, start (net is soft info)
-          this._scheduleAutoStart(400);
+          // Net report is advisory — do not auto-start (lets 3–4P lobby fill)
+          if (this.guestCount() + 1 >= MAX_ROOM_PLAYERS) this._scheduleAutoStart(400, { requireFull: true });
           break;
         case 'net_ping':
           this.sendTo(conn || this.conn, { t: 'net_pong', id: msg.id, ts: Date.now() });
@@ -1499,7 +1524,7 @@
           }
           break;
         case 'room_full':
-          if (typeof Toast !== 'undefined') Toast.show('ROOM FULL (2)', 'pink');
+          if (typeof Toast !== 'undefined') Toast.show('ROOM FULL (4)', 'pink');
           this.status = 'error';
           if (this.onLobby) this.onLobby();
           break;
@@ -1510,8 +1535,9 @@
             this.lobbyGuests.forEach((g) => {
               if (g.id === id) g.ready = true;
             });
-            // 1v1: guest READY → start (host FIGHT also starts via setReady)
-            if (this.guestCount() >= 1) this._scheduleAutoStart(200);
+            // 2P: guest READY → start. 3–4P: wait for host FIGHT or full lobby.
+            if (this.guestCount() + 1 >= MAX_ROOM_PLAYERS) this._scheduleAutoStart(200, { requireFull: true });
+            else if (this.guestCount() === 1) this._scheduleAutoStart(350);
           }
           if (this.onLobby) this.onLobby();
           break;
