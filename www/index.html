@@ -532,7 +532,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:
         <select id="vsDiff"><option value="normal">Normal</option><option value="hard" selected>Hard</option><option value="nightmare">Nightmare</option></select>
       </div>
       <button class="btn cyan" id="vsHostBtn" type="button" style="width:100%;padding:1rem;font-size:.85rem;letter-spacing:.18em">＋ CREATE ROOM</button>
-      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">2 players · first to 10k or 90s</div>
+      <div class="chip" id="roomsCreateStatus" style="margin-top:8px">2–4 players · first to 10k or 90s</div>
       <div class="chip" id="netProbeStatus" style="margin-top:6px">Status · checking…</div>
       <button class="btn outline" id="netProbeBtn" type="button" style="width:100%;margin-top:8px">CHECK ONLINE</button>
     </div>
@@ -549,7 +549,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:
     <div class="section-h"><h3>AVAILABLE ROOMS</h3><button class="btn sm cyan" id="roomsRefresh" type="button">REFRESH</button></div>
     <div class="chip" id="roomsStatus" style="margin-bottom:10px">Loading rooms…</div>
     <div id="roomsList"></div>
-    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Tap <b style="color:var(--c)">JOIN</b> to enter · Max <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">2</b> pilots · idle close <b style="color:var(--m)">1 min</b></p>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:14px;line-height:1.4;text-align:center">Tap <b style="color:var(--c)">JOIN</b> to enter · Max <b style="color:var(--y)">10</b> rooms · <b style="color:var(--c)">4</b> pilots · idle close <b style="color:var(--m)">1 min</b></p>
   </div>
 </div>
 
@@ -597,6 +597,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:
     YOU <b id="vsYouScore" style="color:var(--c)">0</b> · ◆<span id="vsYouLives">3</span>
     &nbsp;vs&nbsp;
     <b id="vsOppName" style="color:var(--m)">OPP</b> <b id="vsOppScore" style="color:var(--y)">0</b> · ◆<span id="vsOppLives">3</span>
+    <div id="vsMatesHud" style="margin-top:2px;font-size:.48rem;color:rgba(255,208,0,.9)"></div>
     <div id="vsNetHud" style="margin-top:3px;font-size:.5rem;color:rgba(0,232,255,.7)">NET · —</div>
   </div>
   <div id="missionBar"></div>
@@ -1869,10 +1870,16 @@ function killEnemy(e,i,owner){
   if(isVs()) pts=Math.round((e.isBoss?450:e.elite?120:65)*(1+Math.min(GS.combo,8)*.08));
   // Credit kill to bullet owner (host local / guest / mate id)
   const isGuestOwner=isVs()&&owner&&owner!=='host'&&owner!=='solo'&&owner!=='local';
-  if(isGuestOwner&&GS.opp){
-    GS.opp.kills=(GS.opp.kills||0)+1;
-    GS.opp.score=(GS.opp.score||0)+pts;
-    GS.opp.waveScore=(GS.opp.waveScore||0)+pts;
+  if(isGuestOwner){
+    const mates=GS.mates&&GS.mates.length?GS.mates:[];
+    let m=mates.find(x=>x&&x.id===owner);
+    if(!m&&GS.opp&&(GS.opp.id===owner||owner==='guest'||owner==='opp')) m=GS.opp;
+    if(!m) m=GS.opp||mates[0];
+    if(m){
+      m.kills=(m.kills||0)+1;
+      m.score=(m.score||0)+pts;
+      m.waveScore=(m.waveScore||0)+pts;
+    }
     if(e.isBoss)GS.bossesKilled++;
     if(e.elite)GS.eliteKills++;
   } else {
@@ -1887,7 +1894,10 @@ function killEnemy(e,i,owner){
   if(isVs()&&isVsHost()&&!GS.vsEnded){
     const goal=GS.vsRaceGoal||VS_RACE_GOAL;
     if(GS.waveScore>=goal) Game.endVs('race_win');
-    else if(GS.opp&&(GS.opp.waveScore|0)>=goal) Game.endVs('race_lose');
+    else {
+      const mates=GS.mates&&GS.mates.length?GS.mates:(GS.opp?[GS.opp]:[]);
+      if(mates.some(m=>m&&(m.waveScore|0)>=goal)) Game.endVs('race_lose');
+    }
   }
   // splitter spawns children
   if(e.split&&!e.isBoss){
@@ -1926,7 +1936,8 @@ function isVsGuest(){return isVs()&&typeof Online!=='undefined'&&Online.role==='
 function vsOwnerLocal(){return isVsHost()?'host':(isVsGuest()?'guest':'solo');}
 function updateVsHud(){
   if(!isVs())return;
-  const o=GS.opp||{};
+  const mates=GS.mates&&GS.mates.length?GS.mates:(GS.opp?[GS.opp]:[]);
+  const o=mates[0]||GS.opp||{};
   const yk=GS.waveScore|0, ok=o.waveScore|0;
   if($('vsYouScore'))$('vsYouScore').textContent=yk.toLocaleString();
   if($('vsOppScore'))$('vsOppScore').textContent=ok.toLocaleString();
@@ -1934,12 +1945,21 @@ function updateVsHud(){
   if($('vsOppLives'))$('vsOppLives').textContent=String(o.lives|0);
   if($('vsOppName'))$('vsOppName').textContent=o.name||(Online&&Online.opp&&Online.opp.name)||'OPP';
   if($('vsTimerHud'))$('vsTimerHud').textContent=Math.max(0,Math.ceil((GS.waveTime||0)/1000))+'s';
+  if($('vsMatesHud')){
+    if(mates.length>1){
+      $('vsMatesHud').textContent=mates.map(m=>{
+        const nm=(m.name||'P').slice(0,6);
+        return nm+' '+(m.waveScore|0).toLocaleString()+'◆'+(m.lives|0);
+      }).join(' · ');
+    } else $('vsMatesHud').textContent='';
+  }
   if($('vsNetHud')&&typeof Online!=='undefined'){
     const a=Online.netReport, b=Online.peerNetReport, L=Online._linkStats;
     const live=L&&L.rtt?('LINK '+L.quality.toUpperCase()+' · '+L.rtt+'ms'+(L.bitrateKbps?(' · ~'+L.bitrateKbps+'kb/s'):'')):'';
     const me=a?a.quality.toUpperCase():'…';
     const pe=b?b.quality.toUpperCase():'…';
-    $('vsNetHud').textContent=(live||('NET '+me+' / '+pe));
+    const n=(1+mates.length);
+    $('vsNetHud').textContent=(live||('NET '+me+' / '+pe))+' · '+n+'P';
   }
 }
 function initVsArena(){
@@ -2026,7 +2046,16 @@ function damageVsShip(who, fromPvp){
     FloatText.add(o.x+o.size/2,o.y-20,fromPvp?'PVP!':'HIT','#ff2d9b',13);
     AudioSys.hit();
     if(fromPvp){GS.pvpHits=(GS.pvpHits||0)+1;GS.score+=500;GS.waveScore+=500;UI.score();}
-    if(o.lives<=0){o.lives=0;o.dead=true;GS.score+=2000;GS.waveScore+=2000;UI.score();FloatText.add(Engine.W/2,Engine.H*.36,'KO!','#ffd000',26);if(isVs())Game.endVs('ko_win');}
+    if(o.lives<=0){
+      o.lives=0;o.dead=true;GS.score+=2000;GS.waveScore+=2000;UI.score();
+      FloatText.add(Engine.W/2,Engine.H*.36,'KO!','#ffd000',26);
+      if(isVs()){
+        const mates=GS.mates&&GS.mates.length?GS.mates:[o];
+        const alive=mates.filter(m=>m&&!m.dead&&(m.lives|0)>0);
+        // 2P: KO ends match. 3–4P: only when no rivals left.
+        if(alive.length===0) Game.endVs('ko_win');
+      }
+    }
   }
   updateVsHud();
 }
@@ -2321,13 +2350,31 @@ const Game={
       if(Quality.trails&&Math.random()>.45)Particles.trail(b.x,b.y+b.h,b.col);
       if(b.y<-40||b.x<-30||b.x>Engine.W+30){GS.bullets.splice(i,1);continue;}
       let hit=false;
-      // PvP: bullet hits rival ship
+      // PvP: bullet hits rival ships (up to 3 guests)
       if(isVsHost()){
         const owner=b.owner||'host';
-        if(owner==='host'&&GS.opp&&!GS.opp.dead&&GS.opp.invuln<=0&&aabb(b.x-b.w/2,b.y,b.w,b.h,GS.opp.x,GS.opp.y,sz,sz,2)){
-          damageVsShip('opp',true);hit=true;
-        } else if(owner==='guest'&&GS.invuln<=0&&aabb(b.x-b.w/2,b.y,b.w,b.h,GS.posX,GS.posY,sz,sz,2)){
-          damageVsShip('local',true);hit=true;
+        const mates=GS.mates&&GS.mates.length?GS.mates:(GS.opp?[GS.opp]:[]);
+        if(owner==='host'){
+          for(const m of mates){
+            if(!m||m.dead||m.invuln>0||(m.lives|0)<=0) continue;
+            if(aabb(b.x-b.w/2,b.y,b.w,b.h,m.x,m.y,sz,sz,2)){
+              GS.opp=m; damageVsShip('opp',true); hit=true; break;
+            }
+          }
+        } else {
+          // guest / mate bullet → host
+          if(GS.invuln<=0&&aabb(b.x-b.w/2,b.y,b.w,b.h,GS.posX,GS.posY,sz,sz,2)){
+            damageVsShip('local',true);hit=true;
+          } else {
+            // FFA: can also tag other guests
+            for(const m of mates){
+              if(!m||m.dead||m.invuln>0||(m.lives|0)<=0) continue;
+              if(m.id===owner) continue;
+              if(aabb(b.x-b.w/2,b.y,b.w,b.h,m.x,m.y,sz,sz,2)){
+                GS.opp=m; damageVsShip('opp',true); hit=true; break;
+              }
+            }
+          }
         }
       }
       if(!hit){
@@ -2610,12 +2657,14 @@ const Game={
   },
   endVs(reason){
     if(GS.vsEnded)return;GS.vsEnded=true;
+    const mates=GS.mates&&GS.mates.length?GS.mates:(GS.opp?[GS.opp]:[]);
+    const best=mates.slice().sort((a,b)=>(b.waveScore|0)-(a.waveScore|0)||(b.kills|0)-(a.kills|0)||(b.lives|0)-(a.lives|0))[0]||GS.opp||{};
     const mineK=GS.kills|0;
-    const theirK=(GS.opp&&GS.opp.kills)|0;
+    const theirK=(best.kills)|0;
     const mineL=GS.lives|0;
-    const theirL=(GS.opp&&GS.opp.lives)|0;
+    const theirL=(best.lives)|0;
     const mineS=GS.waveScore|0;
-    const theirS=(GS.opp&&GS.opp.waveScore)|0;
+    const theirS=(best.waveScore)|0;
     let result='DRAW', win=false;
     if(reason==='race_win'){result='RACE WIN';win=true;}
     else if(reason==='race_lose'){result='RACE LOSE';win=false;}
@@ -2623,7 +2672,7 @@ const Game={
     else if(reason==='ko_lose'){result='KO LOSE';win=false;}
     else if(reason==='disconnect'){result='OPP LEFT · WIN';win=true;}
     else {
-      // timer 90s: highest race score wins (then kills, lives)
+      // timer 90s: beat best rival score (then kills, lives)
       if(mineS>theirS){result='TIME WIN';win=true;}
       else if(theirS>mineS){result='TIME LOSE';win=false;}
       else if(mineK>theirK){result='TIME WIN';win=true;}
@@ -3094,8 +3143,8 @@ function updateVsStatus(){
   if(st) st.textContent=map[Online.status]||Online.status;
   if($('roomsCreateStatus')&&Online.role==='host'&&Online.roomCode){
     $('roomsCreateStatus').textContent=guests>=1
-      ?('Rival found · '+(guests+1)+'/2 · first to 10k / 90s')
-      :('Room live · WAITING FOR RIVAL · '+(guests+1)+'/2');
+      ?('Squad · '+(guests+1)+'/'+(Online.MAX_PLAYERS||4)+' · first to 10k / 90s')
+      :('Room live · WAITING · '+(guests+1)+'/'+(Online.MAX_PLAYERS||4));
   }
   if(info){
     const lobby=Online.role==='host'?Online.lobbyList():(Online._remoteLobby||[]);
@@ -3103,9 +3152,9 @@ function updateVsStatus(){
     const n=Online.role==='host'?(guests+1):(lobby.length||1);
     let tip='';
     if(Online._matchStarted) tip='STARTING MATCH…';
-    else if(Online.role==='host') tip=guests>=1?'Rival connected — tap FIGHT or auto-start':'WAITING FOR RIVAL…';
+    else if(Online.role==='host') tip=guests+1>=(Online.MAX_PLAYERS||4)?'Lobby full — starting…':(guests>=1?'Pilots in — tap FIGHT to start (or wait for 4)':'WAITING FOR PILOTS…');
     else tip='Joined lobby — WAITING FOR RIVAL / host start';
-    info.innerHTML=`PLAYERS <b style="color:var(--y)">${n}/2</b><br>PILOTS: <b style="color:var(--c)">${names}</b><br>${tip}`;
+    info.innerHTML=`PLAYERS <b style="color:var(--y)">${n}/${Online.MAX_PLAYERS||4}</b><br>PILOTS: <b style="color:var(--c)">${names}</b><br>${tip}`;
   }
   if(mine){
     const hostLive=Online.role==='host'&&(Online.status==='waiting'||Online.status==='connected'||Online.status==='hosting');
@@ -3441,11 +3490,11 @@ function wireUI(){
   wireVsNet=function(){
     Online.onConnect=()=>{
       updateVsStatus();
-      Toast.show(Online.role==='host'?'OPPONENT JOINED · AUTO-START':'LINKED TO HOST','ok');
+      Toast.show(Online.role==='host'?(Online.guestCount()+1>=(Online.MAX_PLAYERS||4)?'LOBBY FULL · STARTING':'PILOT JOINED · '+(Online.guestCount()+1)+'/'+(Online.MAX_PLAYERS||4)):'LINKED TO HOST','ok');
       renderRoomsList();
       Online.probeNetwork().then(()=>{Online.shareNetReport();refreshLobbyNetUI();}).catch(()=>{});
       // Host backup: ensure match begins even if hello was missed
-      if(Online.role==='host'&&Online._scheduleAutoStart) Online._scheduleAutoStart(700);
+      if(Online.role==='host'&&Online._scheduleAutoStart&&Online.guestCount()+1>=(Online.MAX_PLAYERS||4)) Online._scheduleAutoStart(700,{requireFull:true});
     };
     Online.onLobby=()=>{updateVsStatus();refreshLobbyNetUI();};
     Online.onStart=(opts)=>launchVsMatch(opts||{});
@@ -3487,12 +3536,11 @@ function wireUI(){
         const net=await Online.probeNetwork();
         if($('netProbeStatus'))$('netProbeStatus').textContent=net.label+(net.ok?' ✓':'');
         refreshLobbyNetUI();
-        if(!net.ok && !Online.isBrowserOnline()){
-          Toast.show('NO INTERNET','pink');
-          if(st) st.textContent='No internet — enable Wi‑Fi/data and retry';
-          return;
+        // Soft warning only — NEVER hard-block room create on probeNetwork
+        if(!net.ok){
+          Toast.show(Online.isBrowserOnline()?'Weak net — creating anyway':'Net probe failed — creating anyway','ok');
+          if(st) st.textContent='Creating room (probe warned)…';
         }
-        if(!net.ok) Toast.show('Unstable network — trying anyway','ok');
       }catch(e){ /* continue */ }
       if(st) st.textContent='Creating room…';
       const open=await Online.listRooms();
@@ -3521,7 +3569,7 @@ function wireUI(){
         try{$('roomsMineBox').scrollIntoView({behavior:'smooth',block:'nearest'});}catch(_){}
       }
       Toast.show('ROOM LIVE · WAITING FOR RIVAL','ok');
-      if(st) st.textContent='Room created · WAITING FOR RIVAL (1/2)';
+      if(st) st.textContent='Room created · WAITING (1/'+(Online.MAX_PLAYERS||4)+')';
       if($('netProbeStatus'))$('netProbeStatus').textContent='ONLINE · hosting · cross-play on';
       updateVsStatus();
       refreshLobbyNetUI();
